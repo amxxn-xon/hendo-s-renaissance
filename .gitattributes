@@ -1,2 +1,12 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Binary assets — never line-ending-normalize these. Without this, the
+# committed SQLite stores (which ARE the deployed data) can be mangled on a
+# fresh clone/checkout — e.g. when Render builds the app — and fonts / PDFs
+# likewise. `binary` is shorthand for -text -diff.
+*.db  binary
+*.pdf binary
+*.woff2 binary
+*.otf binary
+*.ttf binary

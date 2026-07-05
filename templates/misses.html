@@ -6,12 +6,14 @@
 word list of the next compile — the honest alternative to generating an
 answer on the spot.</p>
 {% if rows %}
+<div class="table-scroll">
 <table class="miss-table">
 <tr><th>Normalised</th><th>As typed</th><th>When (UTC)</th></tr>
 {% for r in rows %}
 <tr><td class="{{ cfg.font_class }}">{{ r.q_norm }}</td><td>{{ r.q }}</td><td>{{ r.ts }}</td></tr>
 {% endfor %}
 </table>
+</div>
 {% else %}
 <p>None yet.</p>
 {% endif %}

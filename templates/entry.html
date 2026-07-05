@@ -75,6 +75,7 @@
     <h2 class="lab">Sources &amp; confidence</h2>
     <p class="muted">Every field below is compiled once, offline, from the
     source named — nothing on this page was generated when you searched.</p>
+    <div class="table-scroll">
     <table>
       <tr><th>Field</th><th>Provenance</th><th>Confidence</th></tr>
       {% for field, src in e.provenance.items() %}
@@ -96,6 +97,7 @@
       </tr>
       {% endfor %}
     </table>
+    </div>
   </section>
 </article>
 {% include "_online.html" %}

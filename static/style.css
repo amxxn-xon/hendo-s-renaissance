@@ -33,8 +33,18 @@ main { max-width: 860px; margin: 0 auto; padding: 1.2rem 1rem 3rem; }
 a { color: var(--rubric); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-.syr { font-family: var(--syr-stack); direction: rtl; unicode-bidi: isolate; }
-.ar  { font-family: var(--ar-stack); direction: rtl; unicode-bidi: isolate; }
+/* Never let the page itself scroll sideways. Wide content (the provenance
+   table, a long headword) stays inside its own box — otherwise, because
+   Syriac is right-to-left, any overflow spills leftward and shows up as a
+   stray line of Syriac characters off the side on narrow screens. */
+html, body { overflow-x: hidden; }
+img, table { max-width: 100%; }
+.table-scroll { overflow-x: auto; }
+
+.syr { font-family: var(--syr-stack); direction: rtl; unicode-bidi: isolate;
+       overflow-wrap: break-word; }
+.ar  { font-family: var(--ar-stack); direction: rtl; unicode-bidi: isolate;
+       overflow-wrap: break-word; }
 .ml  { font-family: var(--ml-stack); }
 .lab { font-family: var(--ui); font-size: .72rem; letter-spacing: .09em;
        text-transform: uppercase; color: var(--muted); font-weight: 600;
@@ -225,3 +235,28 @@ footer .ack { font-style: italic; }
 footer .credit { margin-top: .6rem; padding-top: .6rem;
   border-top: 1px dotted var(--line); color: var(--ink); }
 footer .credit strong { color: var(--rubric); }
+
+/* --- narrow screens (phones) ------------------------------------------
+   The desktop layout uses large display type for the Syriac; scale it down
+   and go single-column so nothing exceeds a phone's width. */
+@media (max-width: 640px) {
+  body { font-size: 16px; }
+  main { padding: 1rem .8rem 2.5rem; }
+  header.site, footer { padding: .85rem .8rem; }
+  .site-title { font-size: 1.1rem; }
+  .site-ml { font-size: .85rem; }
+  .dict-toggle { font-size: .76rem; }
+  .dict-toggle a { padding: .3rem .65rem; }
+  .q-input { font-size: 1.25rem; }
+  .cards { grid-template-columns: 1fr; }
+  .hw { font-size: 2.5rem; }
+  .card-hw { font-size: 1.7rem; }
+  .cand-hw { font-size: 1.6rem; }
+  .page-h { font-size: 1.25rem; }
+  .page-h .syr { font-size: 1.8rem; }
+  .gloss-en { font-size: 1.05rem; }
+  .example .verse { font-size: 1.35rem; line-height: 1.85; }
+  .grammar dl { grid-template-columns: 1fr; gap: 0 0; }
+  .grammar dt { margin-top: .5rem; }
+  .key { font-size: 1.2rem; min-width: 2.1rem; }
+}
