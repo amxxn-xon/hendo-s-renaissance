@@ -1,0 +1,48 @@
+# translit_syr_lat.tsv — DRAFT v0 — UNVETTED
+# Latin transliteration rules over SEDRA III vocalised ASCII tokens.
+# VET AGAINST: Joju Jacob's East Syriac slides (Dukrana 2024) before relying
+# on any value here. Every row is editable; the engine (suriyani/translit.py)
+# adds no mappings of its own.
+#
+# Known v0 limits, deliberate and flagged:
+#  * 'o' (zqapha) is rendered ā = the EAST Syriac reading; West would be o.
+#  * Vowel length for i/u is not marked (SEDRA's 5-vowel scheme carries none).
+#  * Matres lectionis are NOT contracted: ;eWuOE renders yešuwʿ, not yešūʿ.
+#  * Linea occultans (silent-letter line) is present in the source data but
+#    not applied: silenced letters still print.
+#  * Seyame (*) prints nothing.
+#
+# token	output	notes
+A	ʾ	alaph
+B	b	
+B,	ḇ	rukkakha (soft) beth
+G	g	
+G,	ḡ	rukkakha gamal
+D	d	
+D,	ḏ	rukkakha dalath
+H	h	
+O	w	waw; also serves as mater for u/o — not contracted in v0
+Z	z	
+K	ḥ	heth
+Y	ṭ	teth
+;	y	yudh; also mater for i/e — not contracted in v0
+C	k	kaph
+C,	ḵ	rukkakha kaph
+L	l	
+M	m	
+N	n	
+S	s	semkath
+E	ʿ	ayin (SYRIAC LETTER E)
+I	p	pe
+I,	p̄	rukkakha pe (f)
+/	ṣ	sadhe
+X	q	qaph
+R	r	
+W	š	shin
+T	t	
+T,	ṯ	rukkakha taw
+a	a	pthaha
+o	ā	zqapha — EAST reading; West = o
+e	e	rbasa; East splits into zlama pšiqa/qašya — SEDRA's single 'e' cannot recover the split
+i	i	hbasa
+u	u	esasa

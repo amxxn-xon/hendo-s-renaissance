@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ searched.typed }} — readings{% endblock %}
+{% block content %}
+<h1 class="page-h">{{ entries|length }} readings for <span class="{{ cfg.font_class }}">{{ searched.typed }}</span></h1>
+<p class="muted">The source distinguishes same-spelled words by vocalisation
+and grammatical analysis; each reading below is a separate compiled entry,
+ranked by {{ meta.get('corpus_label','corpus') }} frequency.</p>
+<div class="cand-list">
+{% for e in entries %}
+  <a class="cand" href="{{ url_for('.entry', word_id=e.word_id) }}">
+    <span class="{{ cfg.font_class }} cand-hw">{{ e.headword_eastern or e.headword_bare }}</span>
+    <code class="voc">{{ e.sedra3_vocalised }}</code>
+    <span class="cand-morph">{{ e.morph_summary or e.pos or '' }}</span>
+    <span class="cand-gloss">{{ (e.gloss_en or '')[:60] }}</span>
+    <span class="chip">{{ e.freq }}× {{ meta.get('freq_label','') }}</span>
+  </a>
+{% endfor %}
+</div>
+{% include "_online.html" %}
+{% endblock %}

@@ -1,0 +1,15 @@
+{# Live, unvetted lookups from CAL/Wiktionary — see online_lookup.py and
+   DECISIONS.md №28. Deliberately separate from the compiled dictionary:
+   fetched client-side, after this page has already rendered, from
+   /<slug>/online.json — a route that never touches the database. A
+   slow or down external site changes nothing about the page above this
+   section. #}
+<section class="online" id="online-section" data-query="{{ online_query }}">
+  <h2 class="lab">Online sources</h2>
+  <p class="online-disclaimer">Fetched live from external sites when this page
+  loaded — not reviewed, not part of this project's compiled data, may be
+  wrong or unavailable, and nothing here is stored.</p>
+  <div id="online-results" class="online-results">
+    <p class="muted online-loading">Checking online sources…</p>
+  </div>
+</section>

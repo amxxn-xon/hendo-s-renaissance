@@ -1,0 +1,10 @@
+# Extra dependency for the OFFLINE compile step only (`python compile.py
+# build` uses pymupdf to parse the Lexical Aids PDF for the coverage
+# boost). The running app never imports it. Install alongside the runtime
+# deps when you intend to (re)compile a store:
+#
+#     pip install -r requirements.txt -r requirements-compile.txt
+#
+# Without it, `compile.py build` still works — it prints a note and falls
+# back to Matthew-only top-N (the Lexical Aids boost is skipped).
+pymupdf

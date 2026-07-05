@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "_macros.html" import confidence_legend %}
+{% block title %}About — {{ meta.get('dict_label','') }} Dictionary{% endblock %}
+{% block content %}
+<h1 class="page-h">About — Version {{ version }}</h1>
+
+<p>This is Version {{ version }} of <strong>Automating Dictionary
+Compilation</strong> (Hendo Projects): a {{ meta.get('dict_label','') }}
+dictionary whose entries are <em>compiled offline</em> from vetted sources
+and <em>served read-only</em>. The two machines are strictly separate: the
+compiler may consult databases, rule tables and a draft-gloss pivot; the
+lookup app you are using now can only retrieve what the compiler stored. No
+form, gloss, or transliteration is ever produced at query time.</p>
+
+<p>Store built: {{ meta.get('built_at','—') }} · corpus:
+{{ meta.get('corpus','—') }} · top {{ meta.get('top_n','—') }} word-forms.</p>
+
+<h2 class="lab">What the badges mean</h2>
+{{ confidence_legend() }}
+
+<h2 class="lab">Data sources &amp; licences</h2>
+{% if cfg.slug == 'syriac' %}
+<p><strong>SEDRA III</strong> (roots, lexemes, words, morphology, English
+glosses derived from Payne Smith, and the BFBS Peshitta NT concordance) —
+© 1996 George A. Kiraz, free for personal and academic use. Required
+acknowledgment appears in the footer of every page; see also G. A. Kiraz,
+‘Automatic Concordance Generation of Syriac Texts’, in <em>VI Symposium
+Syriacum 1992</em>, ed. R. Lavenant, Orientalia Christiana Analecta 247,
+Rome, 1994. Files vendored via the MIT-licensed
+<a href="https://github.com/peshitta/sedrajs">sedrajs</a> project.</p>
+
+<p><strong>SEDRA IV API</strong> (sedra.bethmardutho.org) — the source of
+the vocalised Madnhāyā (<code>eastern</code>) headwords, fetched politely
+and cached by <code>compile.py fetch-vocalised</code>. Until that command
+is run on a normal internet connection, entries show the
+<span class="badge b-pending">pending</span> badge.</p>
+
+<p><strong>Olam</strong> English→Malayalam dataset (olam.in), ODbL —
+“Contains data from Olam (olam.in), made available under the Open Database
+License.” Used only to <em>draft</em> Malayalam gloss candidates, each
+tagged with the English key that matched so the chain is auditable.</p>
+
+<p><strong>Transliteration tables</strong> — human-editable TSVs in
+<code>tables/</code>, DRAFT v0, deliberately unvetted; they await checking
+against the East Syriac ↔ Malayalam convention in Joju Jacob’s slides
+(Dukrana 2024). Values shown carry the <span class="badge b-draft">draft</span>
+badge until then.</p>
+
+<h2 class="lab">Filling the gaps</h2>
+<pre>python compile.py fetch-vocalised   # eastern/western Unicode from SEDRA IV
+python compile.py build --top 300   # widen coverage, rerun anytime</pre>
+{% else %}
+<p><strong>Quranic Arabic Corpus</strong> morphology 0.4 (© 2011 Kais Dukes,
+GNU GPL) — headwords, lemmas, roots, and morphology all come from here,
+already fully vocalised in Uthmani orthography (no fetch step needed, unlike
+the Syriac side). See <a href="https://corpus.quran.com">corpus.quran.com</a>.
+Underlying text: Tanzil Uthmani v1.0.2 (© Tanzil.info, CC BY-ND 3.0).</p>
+
+<p><strong>camel_morph MSA v1.0</strong> (MIT, © 2018–2022 NYU Abu Dhabi) —
+English glosses, cross-matched from this independent MSA lexicon against
+each QAC lemma (exact or orthographically-folded match). This is a weaker
+chain than a lexicon's own native glosses, so every match carries the
+<span class="badge b-cross">cross-matched</span> badge, never
+<span class="badge b-source">source</span>, and records exactly which
+camel_morph lexeme it hit — see the "Sources &amp; confidence" panel on any
+entry with a gloss.</p>
+
+<p><strong>Olam</strong> English→Malayalam dataset (olam.in), ODbL — used
+only to <em>draft</em> Malayalam gloss candidates, each tagged with the
+English key that matched.</p>
+
+<p><strong>Transliteration tables</strong> — human-editable TSVs in
+<code>tables/</code>, DRAFT v0, deliberately unvetted; a convention owner
+for Arabic→Malayalam is not yet assigned (flagged for Dr. Amaldev). Values
+shown carry the <span class="badge b-draft">draft</span> badge until then.</p>
+
+<h2 class="lab">Filling the gaps</h2>
+<pre>python compile_arabic.py build --top 300   # widen coverage, rerun anytime</pre>
+{% endif %}
+
+<h2 class="lab">On-screen keyboard</h2>
+<p>The tap-keyboard below the search box on the home page is a reference
+grid generated from the Unicode character database (labels are official
+character names), not a typing convention.
+{% if cfg.slug == 'syriac' %}When the Keyman CDN is reachable, the real
+<a href="https://keyman.com/keyboards/east_syriac_qwerty">east_syriac_qwerty</a>
+keyboard (MIT) attaches to the search field as well.{% endif %}</p>
+{% endblock %}

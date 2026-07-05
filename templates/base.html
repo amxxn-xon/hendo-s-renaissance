@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ meta.get('dict_label','') }} Dictionary{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Malayalam:wght@400;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Syriac+Eastern&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Amiri&family=Noto+Naskh+Arabic&display=swap" rel="stylesheet">
+<script>window.DICT_SLUG = {{ cfg.slug|tojson }};</script>
+<script src="https://s.keyman.com/kmw/engine/18.0.249/keymanweb.js" defer onerror="window.__kmwFailed=true"></script>
+<script src="{{ url_for('static', filename='keyboard.js') }}" defer></script>
+<script src="{{ url_for('static', filename='online.js') }}" defer></script>
+</head>
+<body>
+<header class="site">
+  <div class="brand">
+    <a class="site-title" href="{{ url_for('.index') }}">{{ meta.get('dict_label','') }} Dictionary</a>
+    {% if cfg.slug == 'syriac' %}<span class="site-ml ml">സുറിയാനി–മലയാളം നിഘണ്ടു</span>{% endif %}
+    <span class="proto">v{{ version }}</span>
+  </div>
+  <nav class="dict-toggle" aria-label="Switch dictionary">
+    <a href="{{ url_for('syriac.index') }}"
+       class="{{ 'active' if cfg.slug == 'syriac' else '' }}">East Syriac → Malayalam</a>
+    <a href="{{ url_for('arabic.index') }}"
+       class="{{ 'active' if cfg.slug == 'arabic' else '' }}">Arabic → Malayalam</a>
+  </nav>
+  <form class="search" action="{{ url_for('.search') }}" method="get" autocomplete="off">
+    <div class="q-wrap">
+      <input id="q" name="q" class="{{ cfg.font_class }} q-input"
+             dir="rtl" lang="{{ 'syr' if cfg.slug == 'syriac' else 'ar' }}"
+             placeholder="{{ 'ܕܝܢ' if cfg.slug == 'syriac' else 'Search…' }}"
+             autocomplete="off" spellcheck="false"
+             value="{{ request.args.get('q','') }}">
+      <div id="suggest" class="suggest" hidden></div>
+    </div>
+    <button type="submit">Search</button>
+  </form>
+  <nav class="nav">
+    <a href="{{ url_for('.index') }}">Home</a><a href="{{ url_for('.about') }}">About</a><a href="{{ url_for('.misses') }}">Misses</a>
+  </nav>
+</header>
+<main>
+{% block content %}{% endblock %}
+</main>
+<footer>
+  {% if cfg.slug == 'syriac' %}
+  <p class="ack">This work makes use of the Syriac Electronic Data Retrieval
+  Archive (SEDRA) by George A. Kiraz, distributed by the Syriac Computing
+  Institute.</p>
+  <p>Peshitta NT text: BFBS, via SEDRA III · Malayalam draft glosses pivot
+  through <a href="https://olam.in">Olam</a> (ODbL) · Compiled offline,
+  served read-only — nothing on this site is generated at query time.</p>
+  {% else %}
+  <p class="ack">Morphological annotation from the <strong>Qur'anic Arabic
+  Corpus</strong> (© 2011 Kais Dukes, GNU GPL) — see
+  <a href="https://corpus.quran.com">corpus.quran.com</a>. Underlying text:
+  Tanzil Uthmani v1.0.2 (© Tanzil.info, CC BY-ND 3.0).</p>
+  <p>English glosses cross-matched from <strong>camel_morph MSA v1.0</strong>
+  (MIT, © NYU Abu Dhabi) · Malayalam draft glosses pivot through
+  <a href="https://olam.in">Olam</a> (ODbL) · Compiled offline, served
+  read-only — nothing on this site is generated at query time.</p>
+  {% endif %}
+  <p class="credit">Automating Dictionary Compilation — Hendo Projects ·
+  built by project interns <strong><a href="https://www.linkedin.com/in/ameenthelinguist/"
+  target="_blank" rel="noopener">Ameen</a></strong> and
+  <strong><a href="https://www.linkedin.com/in/amana-parveen-k/"
+  target="_blank" rel="noopener">Amana</a></strong>,
+  supervised by <strong>Dr. Amaldev Manuel</strong> · IIT Goa</p>
+</footer>
+</body>
+</html>

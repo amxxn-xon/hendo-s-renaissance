@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Logged misses{% endblock %}
+{% block content %}
+<h1 class="page-h">Logged misses</h1>
+<p class="muted">Searches that matched nothing in the store. These feed the
+word list of the next compile — the honest alternative to generating an
+answer on the spot.</p>
+{% if rows %}
+<table class="miss-table">
+<tr><th>Normalised</th><th>As typed</th><th>When (UTC)</th></tr>
+{% for r in rows %}
+<tr><td class="{{ cfg.font_class }}">{{ r.q_norm }}</td><td>{{ r.q }}</td><td>{{ r.ts }}</td></tr>
+{% endfor %}
+</table>
+{% else %}
+<p>None yet.</p>
+{% endif %}
+{% endblock %}

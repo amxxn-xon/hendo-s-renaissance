@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% from "_macros.html" import confidence_badge, provenance_text %}
+{% block title %}{{ e.headword_bare }} — {{ meta.get('dict_label','') }} Dictionary{% endblock %}
+{% block content %}
+{% if searched %}
+<p class="context">Searched <span class="{{ cfg.font_class }}">{{ searched.typed }}</span>
+  {%- if searched.dropped_words %} · took the first of {{ searched.dropped_words + 1 }} words{% endif %}
+  {%- if matched_on == 'bare' and searched.typed != searched.bare %} · matched on the consonantal skeleton{% endif %}</p>
+{% endif %}
+
+{% if not e.is_lexical_form and e.lemma %}
+<p class="banner">Inflected form of the lemma
+  {% if e.lemma_link_word_id %}<a class="{{ cfg.font_class }}" href="{{ url_for('.entry', word_id=e.lemma_link_word_id) }}">{{ e.lemma }}</a>
+  {% else %}<span class="{{ cfg.font_class }}">{{ e.lemma }}</span> <span class="muted">(citation form not yet compiled)</span>{% endif %}
+</p>
+{% endif %}
+
+<article class="entry">
+  <div class="hw-block">
+    <h1 class="{{ cfg.font_class }} hw">{{ e.headword_eastern or e.headword_bare }}</h1>
+    {% if not e.headword_eastern %}
+    <span class="badge b-pending" title="{{ provenance_text(e.provenance.get('headword_eastern')) }}">Madnhāyā vocalisation pending SEDRA IV fetch</span>
+    {% endif %}
+  </div>
+
+  <div class="tri">
+    {% if e.translit_ml %}
+      <span class="ml tri-ml" title="{{ provenance_text(e.provenance.get('translit_ml')) }}">{{ e.translit_ml }}</span>{{ confidence_badge(e.confidence.get('translit_ml')) }}
+    {% endif %}
+    {% if e.translit_lat %}
+      <span class="tri-lat" title="{{ provenance_text(e.provenance.get('translit_lat')) }}">{{ e.translit_lat }}</span>{{ confidence_badge(e.confidence.get('translit_lat')) }}
+    {% endif %}
+    <code class="voc" title="{{ provenance_text(e.provenance.get('sedra3_vocalised')) }}">{{ e.sedra3_vocalised }}</code>
+  </div>
+
+  <section class="senses">
+    {% if e.gloss_en %}
+      <p class="gloss-en">{{ e.gloss_en }} {{ confidence_badge(e.confidence.get('gloss_en')) }}</p>
+    {% endif %}
+    {% if e.gloss_ml %}
+      <ul class="gloss-ml">
+      {% for g in e.gloss_ml %}
+        <li><span class="ml">{{ g.ml }}</span>
+            <span class="badge b-machine" title="Olam English key: {{ g.english_key }}">machine draft · ‘{{ g.english_key }}’</span></li>
+      {% endfor %}
+      </ul>
+    {% elif e.gloss_en %}
+      <p class="muted">No Malayalam draft — the Olam pivot found no match for this English gloss.</p>
+    {% endif %}
+  </section>
+
+  <section class="grammar">
+    <h2 class="lab">Grammar</h2>
+    <dl>
+      {% if e.pos %}<dt>Category</dt><dd>{{ e.pos }}</dd>{% endif %}
+      {% if e.morph_summary %}<dt>Morphology</dt><dd>{{ e.morph_summary }}</dd>{% endif %}
+      {% if e.lemma %}<dt>Lemma</dt><dd><span class="{{ cfg.font_class }}">{{ e.lemma }}</span></dd>{% endif %}
+      {% if e.root %}<dt>Root</dt><dd><span class="{{ cfg.font_class }}">{{ e.root }}</span></dd>{% endif %}
+      <dt>Frequency</dt><dd>{{ e.freq }}× in {{ meta.get('corpus_label','the corpus') }}</dd>
+    </dl>
+    {% if e.has_seyame or e.is_enclitic %}
+    <p>{% if e.has_seyame %}<span class="chip">seyame</span> {% endif %}{% if e.is_enclitic %}<span class="chip">enclitic</span>{% endif %}</p>
+    {% endif %}
+  </section>
+
+  {% if e.example_tokens %}
+  <section class="example">
+    <h2 class="lab">First attestation</h2>
+    <blockquote class="{{ cfg.font_class }} verse">{% for t in e.example_tokens %}{% if loop.index0 in e.example_hl %}<mark>{{ t }}</mark>{% else %}{{ t }}{% endif %}{% if not loop.last %} {% endif %}{% endfor %}</blockquote>
+    <p class="cite">{{ e.example_ref }} · {{ meta.get('corpus_label','') }} · via {{ meta.get('sources_label','') }}</p>
+  </section>
+  {% endif %}
+
+  <section class="apparatus">
+    <h2 class="lab">Sources &amp; confidence</h2>
+    <p class="muted">Every field below is compiled once, offline, from the
+    source named — nothing on this page was generated when you searched.</p>
+    <table>
+      <tr><th>Field</th><th>Provenance</th><th>Confidence</th></tr>
+      {% for field, src in e.provenance.items() %}
+      <tr>
+        <td>{{ field }}</td>
+        <td>{{ provenance_text(src) }}
+          {% if src is mapping and src.get('matches') %}
+          <details class="prov-matches">
+            <summary>{{ src.matches|length }} cross-matched record{{ 's' if src.matches|length != 1 else '' }}</summary>
+            <ul>
+            {% for m in src.matches %}
+              <li><span class="{{ cfg.font_class }}">{{ m.lex }}</span> — {{ m.pos }}, {{ m.tier }} match{% if not m.pos_compatible %} <span class="muted">(part-of-speech mismatch, shown anyway)</span>{% endif %}</li>
+            {% endfor %}
+            </ul>
+          </details>
+          {% endif %}
+        </td>
+        <td>{{ confidence_badge(e.confidence.get(field,'')) }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </section>
+</article>
+{% include "_online.html" %}
+{% endblock %}

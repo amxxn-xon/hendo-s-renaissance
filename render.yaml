@@ -1,0 +1,15 @@
+# Render Blueprint — deploy the compiled dictionary as an always-on Flask
+# web service. See README "Hosting on Render". Both SQLite stores are
+# committed to the repo and served read-only; miss-logging writes to the
+# instance filesystem (ephemeral on the free plan — see the README note).
+services:
+  - type: web
+    name: suriyani-malayalam-dictionary
+    runtime: python
+    plan: free
+    region: singapore   # Render's closest region to India / IIT Goa
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app --workers 1 --threads 4 --timeout 60 --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"

@@ -1,0 +1,32 @@
+{# Shared badge/legend rendering — one place so both dictionaries' entry
+   pages read the same confidence tiers off the same {field: tier} dict
+   compiled by suriyani/backbone.py and arabiyya/backbone.py, instead of
+   guessing a label per field in the template. #}
+
+{% set CONFIDENCE_LABELS = {
+  'source': 'source', 'decoded': 'decoded', 'cross_matched': 'cross-matched',
+  'machine_draft': 'machine draft', 'draft_unvetted': 'draft',
+  'pending': 'pending', 'n/a': 'n/a'
+} %}
+{% set CONFIDENCE_CLASSES = {
+  'source': 'b-source', 'decoded': 'b-decoded', 'cross_matched': 'b-cross',
+  'machine_draft': 'b-machine', 'draft_unvetted': 'b-draft',
+  'pending': 'b-pending', 'n/a': 'b-pending'
+} %}
+
+{% macro confidence_badge(tier) %}<span class="badge {{ CONFIDENCE_CLASSES.get(tier, 'b-pending') }}">{{ CONFIDENCE_LABELS.get(tier, tier or '—') }}</span>{% endmacro %}
+
+{% macro provenance_text(value) -%}
+{%- if value is mapping -%}{{ value.get('source','') }}{%- else -%}{{ value or '' }}{%- endif -%}
+{%- endmacro %}
+
+{% macro confidence_legend() %}
+<p class="legend">
+{{ confidence_badge('source') }} taken verbatim from a vetted source ·
+{{ confidence_badge('decoded') }} mechanically decoded from documented bitfields/tags ·
+{{ confidence_badge('cross_matched') }} matched across two independent resources, not the word's own source ·
+{{ confidence_badge('machine_draft') }} drafted by the Olam pivot, awaiting human review ·
+{{ confidence_badge('draft_unvetted') }} produced by an <em>unvetted</em> v0 rule table ·
+{{ confidence_badge('pending') }} not yet fetched/compiled.
+</p>
+{% endmacro %}

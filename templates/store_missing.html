@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Store not built</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<main>
+<h1 class="page-h">The {{ slug }} dictionary hasn't been compiled yet</h1>
+<p>This dictionary's store (<code>data/{{ 'dictionary.db' if slug == 'syriac' else 'dictionary_ar.db' }}</code>)
+doesn't exist. The app only ever serves what was compiled offline — build it first:</p>
+<pre>{{ cmd }} --top 150</pre>
+<p class="muted">Then reload this page.</p>
+</main>
+</body>
+</html>

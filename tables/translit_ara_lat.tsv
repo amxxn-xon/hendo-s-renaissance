@@ -1,0 +1,65 @@
+# translit_ara_lat.tsv — DRAFT v0 — UNVETTED
+# Latin transliteration rules over Arabic Unicode tokens (QAC forms).
+# The engine (arabiyya/translit_ar.py) normalises tokens first — mater
+# folding, diphthongs, gemination, tanwin — and looks the results up here.
+# Every value is editable; the engine adds no mappings of its own.
+#
+# Known v0 limits, deliberate and flagged:
+#  * Article-lam assimilation IS applied (an orthographic reading rule:
+#    bare lam after wasla before a geminate is the absorbed article), so
+#    ٱلرَّحْمَٰن renders arraḥmān; hyphenation (ar-raḥmān) is not attempted.
+#  * Alef wasla is drafted as plain "a" (its standalone-headword reading);
+#    contextual elision is not modelled.
+#  * Bare teh marbuta (pausal) drafts as "h"; with a vowel it is "t".
+#  * Qur'anic annotation signs (small letters, pause marks) are dropped
+#    with a flag — they are recitation apparatus, not lexical content.
+#
+# token	output	notes
+ء	ʾ	hamza
+أ	ʾ	
+إ	ʾ	
+ؤ	ʾ	
+ئ	ʾ	
+ٱ		wasla: no consonant of its own; the engine supplies vowel a — standalone reading, elision not modelled
+ا	ʾ	consonantal alef only; matres are folded by the engine
+ب	b	
+ت	t	
+ة	t	engine emits row "ة#" when bare/pausal
+ة#	h	pausal teh marbuta
+ث	ṯ	
+ج	j	
+ح	ḥ	
+خ	ḫ	
+د	d	
+ذ	ḏ	
+ر	r	
+ز	z	
+س	s	
+ش	š	
+ص	ṣ	
+ض	ḍ	
+ط	ṭ	
+ظ	ẓ	
+ع	ʿ	
+غ	ġ	
+ف	f	
+ق	q	
+ك	k	
+ل	l	
+م	m	
+ن	n	
+ه	h	
+و	w	consonantal waw; ū matres folded by the engine
+ى	y	consonantal use only; ā matres folded by the engine
+ي	y	consonantal yeh; ī matres folded by the engine
+a	a	fatha
+i	i	kasra
+u	u	damma
+aa	ā	fatha + mater / dagger alef
+ii	ī	kasra + yeh mater
+uu	ū	damma + waw mater
+ay	ay	fatha + yeh with sukun
+aw	aw	fatha + waw with sukun
+an	an	fathatan
+in	in	kasratan
+un	un	dammatan

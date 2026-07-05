@@ -1,0 +1,59 @@
+# translit_syr_ml.tsv — DRAFT v0 — UNVETTED
+# Malayalam transliteration rules over SEDRA III vocalised ASCII tokens.
+# VET AGAINST: Joju Jacob's East Syriac slides (Dukrana 2024). The deck's
+# trilingual word tables define the real convention; every value below is a
+# strawman for the machinery to chew on, nothing more.
+#
+# Directives understood by the engine:
+#   @carrier  consonant contributes no letter; its vowel surfaces as an
+#             independent vowel (അ ആ എ ഇ ഉ)
+#   ^a ^o ^e ^i ^u   independent-vowel rows used after carriers / word-initial
+#
+# Known v0 artifacts, deliberate and flagged:
+#  * Matres not contracted: ;eWuOE renders യെശുവ്, where the convention is
+#    plainly different (cf. ഈശോ in Syro-Malabar usage). Vetting will fix.
+#  * Spirantised (rukkakha) forms mostly collapse onto stops — Malayalam has
+#    no ḡ/ḏ/ṯ distinction; rows flagged COLLISION need Joju's call.
+#  * Emphatics ṭ/ṣ are drafted onto retroflex ട/ഷ — a grapheme convenience,
+#    not a phonetic claim; needs the convention.
+#  * Linea occultans not applied; silenced letters still print.
+#
+# token	output	notes
+A	@carrier	alaph as vowel-carrier
+B	ബ	
+B,	വ	soft beth = v/w — COLLISION with waw (വ); needs Joju convention
+G	ഗ	
+G,	ഗ	soft gamal (ġ) — COLLISION with hard ഗ; Malayalam lacks the sound
+D	ദ	
+D,	ദ	soft dalath (ḏ) — COLLISION with hard ദ
+H	ഹ	
+O	വ	waw; mater not contracted in v0
+Z	സ	COLLISION with semkath (സ); z has no separate Malayalam letter
+K	ഹ	heth (ḥ) — COLLISION with he (ഹ); needs Joju convention
+Y	ട	teth (ṭ) drafted onto retroflex ട — needs convention
+;	യ	yudh; mater not contracted in v0
+C	ക	kaph
+C,	ഖ	soft kaph (ḵ) drafted onto ഖ — COLLISION with qaph draft; needs convention
+L	ല	
+M	മ	
+N	ന	
+S	സ	semkath
+E	@carrier	ayin drafted as carrier (no Malayalam equivalent) — needs convention
+I	പ	pe
+I,	ഫ	soft pe (f)
+/	ഷ	sadhe (ṣ) drafted onto retroflex ഷ — needs convention
+X	ഖ	qaph — cf. ഖുർആൻ for Arabic qāf; still needs convention
+R	ര	
+W	ശ	shin
+T	ത	taw
+T,	ത	soft taw (ṯ) — COLLISION with hard ത; alternative ഥ; needs Joju convention
+a		pthaha = inherent vowel; empty output is correct
+o	ാ	zqapha — EAST reading ā
+e	െ	rbasa; zlama split not recoverable from SEDRA's 'e'
+i	ി	hbasa
+u	ു	esasa
+^a	അ	independent
+^o	ആ	independent
+^e	എ	independent
+^i	ഇ	independent
+^u	ഉ	independent

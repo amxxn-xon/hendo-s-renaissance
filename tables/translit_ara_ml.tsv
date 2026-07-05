@@ -1,0 +1,81 @@
+# translit_ara_ml.tsv — DRAFT v0 — UNVETTED
+# Malayalam transliteration rules over Arabic Unicode tokens (QAC forms).
+# VETTING REFERENCE: none fixed yet — the team must name the convention
+# source for Arabic→Malayalam (the Arabi Malayalam orbit is the obvious
+# anchor, cf. blueprint §6.5). Several rows below cite spellings common
+# in Kerala Muslim usage (ഖുർആൻ, സ്വലാത്ത്, റമളാൻ, ളുഹർ, ജുമുഅ); they are
+# marked VERIFY because common usage is not yet a vetted convention.
+#
+# Directives (same engine conventions as the Syriac tables):
+#   @carrier  consonant contributes no letter; its vowel surfaces as an
+#             independent vowel (അ ഇ ഉ ആ ഈ ഊ …)
+#   ^a ^i ^u ^aa ^ii ^uu ^ay ^aw ^an ^in ^un   independent-vowel rows
+#
+# Known v0 artifacts, deliberate and flagged:
+#  * Article-lam assimilation IS applied (orthographic reading rule).
+#  * Carrier consonants in closed syllables render as അ് (മഅ്ദനി
+#    pattern) — VERIFY.
+#  * Gemination renders as doubled letter with virama (ല + ് + ല = ല്ല).
+#  * Bare (pausal) teh marbuta emits nothing — row "ة#".
+#  * Qur'anic annotation signs dropped with a flag.
+#
+# token	output	notes
+ء	@carrier	hamza as vowel-carrier — cf. ജുമുഅ pattern; VERIFY
+أ	@carrier	
+إ	@carrier	
+ؤ	@carrier	
+ئ	@carrier	
+ٱ	@carrier	wasla; engine supplies vowel a when unmarked
+ا	@carrier	consonantal alef (rare; matres folded by engine)
+ب	ബ	
+ت	ത	
+ة	ത	voweled teh marbuta (construct) — cf. സ്വലാത്ത്; VERIFY
+ة#		pausal teh marbuta: preceding vowel stands alone — VERIFY
+ث	ഥ	or സ — Kerala usage varies; needs convention
+ج	ജ	
+ح	ഹ	COLLISION with ه (ഹ); needs convention
+خ	ഖ	cf. ഖാലിദ് — COLLISION with ق; both land on ഖ in common usage
+د	ദ	
+ذ	ദ	COLLISION with د; needs convention (ദ് vs സ variants exist)
+ر	റ	Kerala usage prefers റ for Arabic r (cf. റമളാൻ); or ര — VERIFY
+ز	സ	COLLISION with س; needs convention
+س	സ	
+ش	ശ	
+ص	സ്വ	Kerala practice, cf. സ്വലാത്ത് — VERIFY
+ض	ള	Kerala practice, cf. റമളാൻ — VERIFY
+ط	ത്വ	Kerala practice pattern — VERIFY
+ظ	ള	COLLISION with ض (ള), cf. ളുഹർ — VERIFY
+ع	@carrier	cf. ജുമുഅ — VERIFY; no Malayalam consonant equivalent
+غ	ഗ	no Malayalam ġ; needs convention
+ف	ഫ	
+ق	ഖ	cf. ഖുർആൻ — COLLISION with خ; needs convention
+ك	ക	
+ل	ല	
+م	മ	
+ن	ന	
+ه	ഹ	
+و	വ	consonantal waw
+ى	യ	consonantal use only
+ي	യ	consonantal yeh
+a		fatha = inherent vowel; empty output is correct
+i	ി	kasra
+u	ു	damma
+aa	ാ	fatha + mater / dagger alef
+ii	ീ	
+uu	ൂ	
+ay	ൈ	fatha + yeh-sukun as ai matra (ബൈത് pattern) — VERIFY
+aw	ൗ	fatha + waw-sukun as au mark — VERIFY
+an	ൻ	fathatan: inherent a + chillu n — VERIFY
+in	ിൻ	kasratan — VERIFY
+un	ുൻ	dammatan — VERIFY
+^a	അ	independent
+^i	ഇ	
+^u	ഉ	
+^aa	ആ	
+^ii	ഈ	
+^uu	ഊ	
+^ay	ഐ	
+^aw	ഔ	
+^an	അൻ	
+^in	ഇൻ	
+^un	ഉൻ	

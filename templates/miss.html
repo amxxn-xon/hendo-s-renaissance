@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Not in the store{% endblock %}
+{% block content %}
+{% if wrong_script %}
+<h1 class="page-h">No {{ wrong_script }} in your search</h1>
+<p>This is the {{ meta.get('dict_label','') }} dictionary — it searches
+<strong>{{ wrong_script }}</strong> script. Your query didn't contain any
+{{ wrong_script }} characters (it may be in another script, or romanised).
+Type or paste a {{ wrong_script }} word, use the on-screen keyboard on the
+<a href="{{ url_for('.index') }}">home page</a>, or switch dictionary with
+the toggle above.</p>
+{% else %}
+<h1 class="page-h">No compiled entry for <span class="{{ cfg.font_class }}">{{ searched.typed }}</span></h1>
+<p>The store covers the most frequent word-forms of {{ meta.get('corpus_label','the corpus') }},
+compiled offline from {{ meta.get('sources_label','the source data') }}. Nothing is generated at lookup time, so an
+absent word is an honest gap — <strong>this miss has been logged</strong> to
+guide the next compile.</p>
+{% endif %}
+{% if suggestions %}
+<h2 class="lab">Near matches in the store</h2>
+<div class="suggs">
+{% for s in suggestions %}
+  <a class="sugg" href="{{ url_for('.search', q=s.surface) }}">
+    <span class="{{ cfg.font_class }}">{{ s.headword_eastern or s.surface }}</span>
+    <span class="sugg-gloss">{{ (s.gloss_en or '')[:40] }}</span>
+  </a>
+{% endfor %}
+</div>
+{% else %}
+<p class="muted">No near matches among stored surfaces.</p>
+{% endif %}
+{% include "_online.html" %}
+{% endblock %}

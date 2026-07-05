@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <p class="lede">A {{ meta.get('dict_label', 'East Syriac → Malayalam') }} dictionary, compiled
+  offline from {{ meta.get('sources_label', 'SEDRA III and the Peshitta') }}. The store currently holds
+  <strong>{{ total }}</strong> entries
+  {%- if total|int > meta.get('top_n','0')|int %} — the top
+  <strong>{{ meta.get('top_n','?') }}</strong> most frequent word-forms of
+  <em>{{ meta.get('corpus_label', 'Matthew') }}</em>, plus
+  <strong>{{ total|int - meta.get('top_n','0')|int }}</strong> more words widened in via
+  <em>Lexical Aids to the Syriac New Testament</em>'s whole-NT frequency ranking
+  {%- else %}, the top <strong>{{ meta.get('top_n','?') }}</strong> most frequent word-forms of
+  <em>{{ meta.get('corpus_label', 'Matthew') }}</em>
+  {%- endif %} — type or paste above, or tap letters below.</p>
+  <div id="kmw-status" class="kbd-status"></div>
+  <div id="kbd" class="kbd" aria-label="On-screen {{ 'Syriac' if cfg.slug == 'syriac' else 'Arabic' }} reference keyboard"></div>
+</section>
+<section>
+  <h2 class="lab">In the store — highest frequency first</h2>
+  <div class="cards">
+  {% for s in samples %}
+    <a class="card" href="{{ url_for('.entry', word_id=s.word_id) }}">
+      <span class="{{ cfg.font_class }} card-hw">{{ s.headword_eastern or s.headword_bare }}</span>
+      {% if s.translit_ml %}<span class="ml card-ml">{{ s.translit_ml }}</span>{% endif %}
+      <span class="card-gloss">{{ (s.gloss_en or '—').split(';')[0] }}</span>
+      <span class="chip">{{ s.freq }}× {{ meta.get('freq_label', 'Mt') }}</span>
+    </a>
+  {% endfor %}
+  </div>
+</section>
+{% endblock %}
