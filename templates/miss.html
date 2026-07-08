@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Not in the store{% endblock %}
+{% block title %}Not in the dictionary yet{% endblock %}
 {% block content %}
 {% if wrong_script %}
 <h1 class="page-h">No {{ wrong_script }} in your search</h1>
@@ -10,14 +10,15 @@ Type or paste a {{ wrong_script }} word, use the on-screen keyboard on the
 <a href="{{ url_for('.index') }}">home page</a>, or switch dictionary with
 the toggle above.</p>
 {% else %}
-<h1 class="page-h">No compiled entry for <span class="{{ cfg.font_class }}">{{ searched.typed }}</span></h1>
-<p>The store covers the most frequent word-forms of {{ meta.get('corpus_label','the corpus') }},
-compiled offline from {{ meta.get('sources_label','the source data') }}. Nothing is generated at lookup time, so an
-absent word is an honest gap — <strong>this miss has been logged</strong> to
-guide the next compile.</p>
+<h1 class="page-h">Not in the dictionary yet: <span class="{{ cfg.font_class }}">{{ searched.typed }}</span></h1>
+<p>This dictionary grows in order of how often words appear in
+{{ meta.get('corpus_label','the corpus') }}, and this one hasn't been added
+yet. Rather than guess at an answer, we say so honestly —
+<strong>your search has been saved</strong>, and the words people look for
+help decide what gets added next.</p>
 {% endif %}
 {% if suggestions %}
-<h2 class="lab">Near matches in the store</h2>
+<h2 class="lab">Close matches in this dictionary</h2>
 <div class="suggs">
 {% for s in suggestions %}
   <a class="sugg" href="{{ url_for('.search', q=s.surface) }}">
@@ -27,7 +28,7 @@ guide the next compile.</p>
 {% endfor %}
 </div>
 {% else %}
-<p class="muted">No near matches among stored surfaces.</p>
+<p class="muted">Nothing close to it in the dictionary either.</p>
 {% endif %}
 {% include "_online.html" %}
 {% endblock %}

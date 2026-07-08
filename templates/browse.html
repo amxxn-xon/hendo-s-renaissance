@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Browse — {{ meta.get('dict_label','') }} Dictionary{% endblock %}
+{% block content %}
+<h1 class="page-h">All entries</h1>
+<p class="muted">Everything in this dictionary — <strong>{{ total }}</strong>
+entries, page {{ page }} of {{ pages }}.</p>
+<p class="browse-order">Order:
+  <a href="{{ url_for('.browse', order='freq') }}"
+     class="{{ 'active' if order != 'alpha' else '' }}">by frequency</a> ·
+  <a href="{{ url_for('.browse', order='alpha') }}"
+     class="{{ 'active' if order == 'alpha' else '' }}">alphabetical</a></p>
+<div class="cand-list">
+{% for e in rows %}
+  <a class="cand" href="{{ url_for('.entry', word_id=e.word_id) }}">
+    <span class="{{ cfg.font_class }} cand-hw">{{ e.headword_eastern or e.headword_bare }}</span>
+    {% if e.translit_ml %}<span class="ml cand-morph">{{ e.translit_ml }}</span>{% endif %}
+    <span class="cand-morph">{{ e.morph_summary or e.pos or '' }}</span>
+    <span class="cand-gloss">{{ (e.gloss_en or '')[:60] }}</span>
+    <span class="chip">{{ e.freq }}× {{ meta.get('freq_label','') }}</span>
+  </a>
+{% endfor %}
+</div>
+<nav class="pager" aria-label="Browse pages">
+  <a class="pg {{ 'disabled' if page <= 1 else '' }}"
+     href="{{ url_for('.browse', page=page-1, order=order) }}">← Previous</a>
+  <span class="muted">page {{ page }} / {{ pages }}</span>
+  <a class="pg {{ 'disabled' if page >= pages else '' }}"
+     href="{{ url_for('.browse', page=page+1, order=order) }}">Next →</a>
+</nav>
+{% endblock %}

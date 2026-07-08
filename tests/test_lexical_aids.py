@@ -5,7 +5,7 @@ the same standard as every other source in this repo.
     python3 tests/test_lexical_aids.py
 
 Own suite, like test_arabic.py/test_app.py — keeps test_core.py's "must
-stay 9/9" invariant intact rather than growing that number (CLAUDE.md).
+stay 9/9" invariant intact rather than growing that number (assistance.md).
 
 Fixtures are ref numbers into the real vendored PDF
 (data/lexical_aids/lexical-aids-3rd-ed-2024.pdf), not typed-from-memory

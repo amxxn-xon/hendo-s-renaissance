@@ -21,35 +21,52 @@ from .sedra3 import BOOK_NAMES, BfbsToken, Word, parse_bfbs
 
 
 class PeshittaBook:
-    """One NT book of the BFBS text, indexed for the compiler.
+    """One NT book — or, with book_code=None, the whole Peshitta NT —
+    of the BFBS text, indexed for the compiler.
 
-    Loading all of BFBS.TXT and filtering costs well under a second for
-    ~110k tokens, so we keep it simple and in-memory.
+    Loading all of BFBS.TXT costs well under a second for ~110k tokens,
+    so we keep it simple and in-memory. Verses are keyed by
+    (book, chapter, verse) so multi-book corpora can't collide two books'
+    identically-numbered verses.
     """
 
-    def __init__(self, book_code: int, tokens: list[BfbsToken]):
+    def __init__(self, book_code: int | None, tokens: list[BfbsToken]):
         self.book_code = book_code
-        self.book_name = BOOK_NAMES.get(book_code, f"Book {book_code}")
+        self.book_name = (BOOK_NAMES.get(book_code, f"Book {book_code}")
+                          if book_code is not None else "Peshitta NT")
         self.tokens = tokens
 
-        #: word_id -> number of running-text occurrences in this book
+        #: word_id -> number of running-text occurrences in this corpus
         self.freq: Counter[int] = Counter(t.word_id for t in tokens)
 
-        #: (chapter, verse) -> tokens in verse order
-        self.verses: dict[tuple[int, int], list[BfbsToken]] = defaultdict(list)
+        #: (book, chapter, verse) -> tokens in verse order
+        self.verses: dict[tuple[int, int, int], list[BfbsToken]] = defaultdict(list)
         for t in tokens:
-            self.verses[(t.chapter, t.verse)].append(t)
+            self.verses[(t.book, t.chapter, t.verse)].append(t)
         for vt in self.verses.values():
             vt.sort(key=lambda t: t.word_pos)
 
-        #: word_id -> its earliest token (reading order)
+        #: word_id -> its earliest token (reading order), and
+        #: word_id -> every distinct (book, chapter, verse) it appears in,
+        #: in reading order. Both are built in one pass so
+        #: attestations_for() is a dict lookup, not a re-scan of ~110k
+        #: tokens per entry.
         self.first_seen: dict[int, BfbsToken] = {}
-        for t in sorted(tokens, key=lambda t: (t.chapter, t.verse, t.word_pos)):
+        self.word_verses: dict[int, list[tuple[int, int, int]]] = defaultdict(list)
+        _wv_seen: set[tuple[int, int, int, int]] = set()
+        for t in sorted(tokens, key=lambda t: (t.book, t.chapter, t.verse, t.word_pos)):
             self.first_seen.setdefault(t.word_id, t)
+            key = (t.word_id, t.book, t.chapter, t.verse)
+            if key not in _wv_seen:
+                _wv_seen.add(key)
+                self.word_verses[t.word_id].append((t.book, t.chapter, t.verse))
 
     @classmethod
-    def load(cls, bfbs_path: Path, book_code: int = 52) -> "PeshittaBook":
-        toks = [t for t in parse_bfbs(bfbs_path) if t.book == book_code]
+    def load(cls, bfbs_path: Path, book_code: int | None = 52) -> "PeshittaBook":
+        """book_code=52 loads Matthew (the original scope); book_code=None
+        loads every book — the whole Peshitta NT, same vendored file."""
+        toks = [t for t in parse_bfbs(bfbs_path)
+                if book_code is None or t.book == book_code]
         if not toks:
             raise ValueError(f"No tokens for book code {book_code} in {bfbs_path}")
         return cls(book_code, toks)
@@ -72,10 +89,26 @@ class PeshittaBook:
         t0 = self.first_seen.get(word_id)
         if t0 is None:
             return None
-        verse = self.verses[(t0.chapter, t0.verse)]
+        return self._render_verse(t0.book, t0.chapter, t0.verse, word_id, words)
+
+    def _render_verse(self, book: int, chapter: int, verse_no: int,
+                      word_id: int, words: dict[int, "Word"]) -> dict:
+        verse = self.verses[(book, chapter, verse_no)]
         surface = [words[t.word_id].syriac_cons for t in verse]
         return {
-            "ref": f"{self.book_name} {t0.chapter}:{t0.verse}",
+            "ref": f"{BOOK_NAMES.get(book, f'Book {book}')} {chapter}:{verse_no}",
             "text": " ".join(surface),
             "highlight": [i for i, t in enumerate(verse) if t.word_id == word_id],
         }
+
+    def attestations_for(self, word_id: int, words: dict[int, "Word"],
+                         limit: int = 20) -> dict:
+        """Every verse (up to `limit`) where word_id occurs, in reading
+        order — the full concordance for this word within the corpus, same
+        consonantal-only rendering as example_for(). Returns
+        {"total": N, "shown": [{ref,text,highlight}, ...]}; `total` is the
+        true verse count so the UI can say "showing 20 of 333"."""
+        verses = self.word_verses.get(word_id, [])
+        shown = [self._render_verse(b, c, v, word_id, words)
+                 for b, c, v in verses[:limit]]
+        return {"total": len(verses), "shown": shown}

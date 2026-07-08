@@ -1,36 +1,42 @@
-"""Live, read-only lookups from CAL and Wiktionary — a deliberate, narrow
-exception to compile/lookup separation (CLAUDE.md rule #3), made only
-after explicit discussion with Ameen about the tradeoff (DECISIONS.md
-№28). This module is NOT part of the compiled dictionary: nothing here
-is stored, nothing here feeds a compiled entry's own gloss/confidence,
-and the app renders its results in a section labelled, unmissably, as
-live and unvetted. If a source here is unreachable or returns nothing,
-the compiled dictionary's own behaviour (suriyani.lookup.resolve()/
-suggest()) is completely unaffected — the two code paths never touch;
-this module never imports sqlite3 and is never given a db connection.
+"""Live, read-only lookups from Wiktionary and Wikidata — a deliberate,
+narrow exception to compile/lookup separation (assistance.md rule #3),
+made only after explicit discussion with Ameen about the tradeoff
+(DECISIONS.md №28, widened in №33). This module is NOT part of the
+compiled dictionary: nothing here is stored, nothing here feeds a
+compiled entry's own gloss/confidence, and the app renders its results in
+a section labelled, unmissably, as live and unvetted. If a source here is
+unreachable or returns nothing, the compiled dictionary's own behaviour
+(suriyani.lookup.resolve()/suggest()) is completely unaffected — the two
+code paths never touch; this module never imports sqlite3 and is never
+given a db connection.
 
-Sources, both verified live this session (see DECISIONS.md №28 for the
-exact queries run and what came back):
+Sources (all keyless, documented MediaWiki/Wikibase APIs):
 
-  CAL — the Comprehensive Aramaic Lexicon (cal.huc.edu). Free, keyless,
-        no documented API: this queries its public browse CGI
-        (browseSKEYheaders.php) and parses the HTML it returns. Aramaic
-        only (Syriac's language family) — never queried for the Arabic
-        dictionary; Arabic is a related but distinct language.
-  Wiktionary — the public MediaWiki API (en.wiktionary.org), used for
-        both dictionaries. Free, keyless, documented
-        (https://www.mediawiki.org/wiki/API:Parsing_wikitext).
+  Wiktionary (exact entry) — action=parse on en.wiktionary.org, pulls the
+        numbered gloss lines out of the word's own L2 language section.
+        The precise dictionary entry, when the page exists.
+  Wiktionary (related pages) — action=query&list=search, a full-text
+        search that widens the net: inflected forms, compound phrases,
+        and other pages that mention the word, each linked. Looser than
+        the exact entry by design — labelled as such in the UI.
+  Wikidata lexemes — wbsearchentities&type=lexeme, structured lexeme
+        records (form + language + part of speech). Rich for Arabic;
+        Classical Syriac lexemes are still sparse on Wikidata, so the
+        Syriac dictionary does not query it (see dict_registry.py).
+
+CAL (the Comprehensive Aramaic Lexicon) was an earlier source here; it was
+removed in DECISIONS №33 (its unversioned browse-CGI HTML was brittle to
+parse and it covered only the Syriac side). The Wiktionary/Wikidata pair
+below is keyless, JSON, documented, and serves both dictionaries.
 """
 
 from __future__ import annotations
 
 import html
 import re
-import unicodedata
 from dataclasses import asdict, dataclass
 
 from dict_registry import VERSION
-from suriyani import sedra3
 
 _USER_AGENT = f"suriyani-dict/{VERSION} (academic; Hendo Projects; online-lookup)"
 
@@ -45,17 +51,17 @@ except ImportError:
 _NO_REQUESTS_MSG = ("online lookups need the 'requests' package "
                     "(pip install -r requirements.txt)")
 
-#: Hard ceiling on how much of an external response we buffer + parse. Both
-#: sources' real responses are a few KB; anything past this is a maintenance
-#: page, an error dump, or a hostile body, and is not worth pinning a worker
-#: over. Enforced by streaming and stopping early (see _get_capped).
+#: Hard ceiling on how much of an external response we buffer + parse. The
+#: real responses are a few KB; anything past this is a maintenance page, an
+#: error dump, or a hostile body, and is not worth pinning a worker over.
+#: Enforced by streaming and stopping early (see _get_capped).
 _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
 
 def _get_capped(url: str, params: dict, timeout: float) -> "tuple":
     """GET with a total-bytes cap and no redirect-following. Returns
-    (text_or_bytes_decoded_utf8, None) or (None, error_message). Kept in
-    one place so both CAL and Wiktionary inherit the same guards."""
+    (text_decoded_utf8, None) or (None, error_message). Kept in one place
+    so every source inherits the same guards."""
     if _requests is None:
         return None, _NO_REQUESTS_MSG
     try:
@@ -70,141 +76,28 @@ def _get_capped(url: str, params: dict, timeout: float) -> "tuple":
             if total > _MAX_RESPONSE_BYTES:
                 resp.close()
                 return None, "response too large"
-        # Both sources serve UTF-8; pin it rather than trusting requests'
-        # ISO-8859-1 default for charset-less text/html (which would mojibake
-        # CAL's š/ḥ/ʾ under a UI that promises the source's text verbatim).
+        # These APIs serve UTF-8 JSON; pin it rather than trusting requests'
+        # ISO-8859-1 default for a charset-less content-type.
         return b"".join(chunks).decode("utf-8", errors="replace"), None
     except Exception as exc:
         return None, exc.__class__.__name__
 
-# --- CAL: Syriac consonant -> CAL's own ASCII search-key scheme ------------
-# Codes and order read directly off CAL's own jump-grid links at
-# https://cal.huc.edu/searching/fullbrowser.html (fetched 2026-07-05):
-#   ) b g d h w z x T y k l m n s ( p c q r $ t
-# — one code per letter, Alaph..Taw, the same order and count (22) as the
-# already-verified suriyani.sedra3._UNICODE_CONSONANTS, so this table is
-# built by zipping the two lists rather than retyping codepoints.
-_CAL_CODES = list(")bgdhwzxTyklmns(pcqr$t")
-assert len(_CAL_CODES) == len(sedra3._UNICODE_CONSONANTS) == 22
-
-CAL_TRANSLIT: dict[str, str] = {
-    chr(cp): code
-    for (cp, _name), code in zip(sedra3._UNICODE_CONSONANTS, _CAL_CODES)
-}
-
-# Loose Latin equivalents, for ranking CAL's prefix-browse results only —
-# never for deciding what to show or hide. Two symmetric halves, both
-# collapsing down to the same plain-a-z comparison space:
-#   _loose()            — CAL's own Latin display text (š, ḥ, ṭ, ʿ, ʾ, ṣ):
-#                          NFD-decompose, drop combining marks and spacing
-#                          modifier letters (category Lm — CAL's ʾ/ʿ), keep a-z.
-#   _loose_from_cal_key() — this module's Syriac->CAL-ASCII key (already
-#                          computed by to_cal()): the few codes that
-#                          aren't already a plain consonant letter (the
-#                          two glottal/pharyngeal codes, and heth/teth/
-#                          sadhe/shin's non-letter-alike codes) get mapped
-#                          to the same bare letter their Latin diacritic
-#                          form would decompose to.
-# A miss here just means worse ordering, never a hidden or fabricated
-# result — the raw CAL text is always shown verbatim regardless.
-_CAL_KEY_LOOSE_OVERRIDES = {")": "", "(": "", "x": "h", "T": "t", "c": "s", "$": "s"}
-
-
-def _loose(s: str) -> str:
-    nfd = unicodedata.normalize("NFD", s)
-    kept = "".join(ch for ch in nfd
-                  if not unicodedata.combining(ch) and unicodedata.category(ch) != "Lm")
-    return "".join(ch for ch in kept.lower() if "a" <= ch <= "z")
-
-
-def _loose_from_cal_key(cal_key: str) -> str:
-    return "".join(_CAL_KEY_LOOSE_OVERRIDES.get(ch, ch.lower()) for ch in cal_key)
-
-
-def to_cal(skeleton: str) -> str | None:
-    """Syriac consonantal skeleton -> CAL's ASCII search-key string, or
-    None if any character isn't one of the 22 Syriac consonants (a bare
-    skeleton shouldn't carry seyame/vowel marks, but this defends anyway
-    rather than silently mis-mapping something)."""
-    out = []
-    for ch in skeleton:
-        code = CAL_TRANSLIT.get(ch)
-        if code is None:
-            return None
-        out.append(code)
-    return "".join(out)
-
 
 @dataclass(frozen=True)
 class OnlineResult:
-    headword: str   # the source's own transliteration/display form, verbatim
+    headword: str   # the source's own display form, verbatim
     pos: str        # grammatical note, if the source gives one
     gloss: str      # short English gloss/definition, verbatim from the source
     url: str        # link to the live source page
 
 
-# --- CAL --------------------------------------------------------------------
-
-_CAL_ENTRY_RE = re.compile(
-    r'<a href="oneentry\.php\?lemma=([^"&]+)[^"]*"[^>]*>'
-    r'(?:<span class="biglem">|<span class="lem">)?'
-    r'<font color="#0000A0">([^<]*)</font>.*?'
-    r'<pos>([^<]*)</pos>\s*</a>.*?'
-    r'<span class="gloss">([^<]*)</span>',
-    re.DOTALL)
+def _strip_html(s: str) -> str:
+    """Drop tags (Wiktionary search snippets wrap the match in <span>) and
+    unescape entities. Bounded input; never executes anything."""
+    return html.unescape(re.sub(r"<[^>]+>", "", s or "")).strip()
 
 
-def _matches_query(headword: str, query_loose: str) -> bool:
-    return any(_loose(alt.strip()) == query_loose for alt in headword.split(","))
-
-
-def parse_cal_html(html_text: str, cal_key: str, limit: int = 10) -> list[OnlineResult]:
-    """Pure parser, no network — takes a raw response body (real or a
-    saved fixture) and the already-computed CAL search key, returns
-    ranked results. Kept separate from fetch_cal() so tests can exercise
-    the parsing/ranking logic against a saved real response without a
-    live network dependency every run."""
-    query_loose = _loose_from_cal_key(cal_key)
-    seen: dict[str, OnlineResult] = {}
-    for m in _CAL_ENTRY_RE.finditer(html_text):
-        lemma_key, translit, pos, gloss = m.groups()
-        if lemma_key in seen:
-            continue
-        # lemma_key arrives already percent-encoded from CAL's own hrefs,
-        # except for the literal space before the homograph letter
-        # ("%24lm N") — encode just that so the URL is well-formed.
-        seen[lemma_key] = OnlineResult(
-            headword=html.unescape(translit).strip(),
-            pos=html.unescape(pos).strip(),
-            gloss=html.unescape(gloss).strip(),
-            url="https://cal.huc.edu/oneentry.php?lemma="
-                + lemma_key.replace(" ", "%20") + "&cits=all")
-
-    results = list(seen.values())
-    results.sort(key=lambda r: not _matches_query(r.headword, query_loose))
-    return results[:limit]
-
-
-def fetch_cal(skeleton: str, limit: int = 10,
-             timeout: float = 6.0) -> tuple[list[OnlineResult], str | None]:
-    """Prefix-browse CAL for `skeleton`'s first 3 letters, return entries
-    whose own transliteration looks like the query first (best-effort
-    ranking only), then other same-prefix entries — mirroring the
-    "closest headword" ethos of suriyani.lookup.suggest(), just against a
-    live external source instead of the compiled store."""
-    cal_key = to_cal(skeleton)
-    if not cal_key:
-        return [], None  # not a plain Syriac skeleton — nothing to ask CAL
-
-    text, err = _get_capped("https://cal.huc.edu/browseSKEYheaders.php",
-                            {"first3": f'"{cal_key[:3]}"'}, timeout)
-    if err is not None:
-        msg = err if err == _NO_REQUESTS_MSG else f"couldn't reach CAL just now ({err})"
-        return [], msg
-    return parse_cal_html(text, cal_key, limit=limit), None
-
-
-# --- Wiktionary ---------------------------------------------------------------
+# --- Wiktionary: exact entry (action=parse) ---------------------------------
 
 _WIKT_API = "https://en.wiktionary.org/w/api.php"
 _WIKI_LINK_RE = re.compile(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]")
@@ -228,13 +121,29 @@ def _clean_wikitext(s: str) -> str:
     return s.strip()
 
 
+_L2_HEADING_RE = re.compile(r"(?m)^==([^=].*?)==\s*$")
+
+
 def parse_wiktionary_json(data: dict, lang_candidates: tuple[str, ...],
-                          fallback_title: str) -> list[OnlineResult]:
+                          fallback_title: str,
+                          related_pattern: str | None = None) -> list[OnlineResult]:
     """Pure parser, no network — takes an already-decoded action=parse
-    JSON response (real or a saved fixture) and returns results. Kept
-    separate from fetch_wiktionary() for the same reason as
-    parse_cal_html(): testable against a saved real response. Defends
-    against valid-JSON-but-wrong-shape bodies (a captive portal or proxy
+    JSON response (real or a saved fixture) and returns one result per
+    relevant language section of the page.
+
+    A Wiktionary page for a Syriac-script or Arabic-script title usually
+    carries several languages' entries: ܫܠܡܐ has Classical Syriac,
+    Assyrian Neo-Aramaic, Turoyo, and Western Neo-Aramaic sections;
+    سلام has Arabic plus Levantine dialect sections (verified against the
+    saved fixture pages, 2026-07-08). The `lang_candidates` sections are
+    the dictionary's own language (listed first); `related_pattern`, when
+    given, additionally admits closely-related languages by regex over the
+    L2 heading (r"Aramaic$|^Turoyo$" for Syriac, r"Arabic$" for Arabic) —
+    each labelled with its own section name so a Turoyo gloss can never
+    pass as Classical Syriac. Unrelated same-spelling languages (Persian,
+    Urdu, Ottoman Turkish …) stay excluded.
+
+    Defends against valid-JSON-but-wrong-shape bodies (a captive portal
     returning null / a list / {"parse": null} with HTTP 200) — those must
     yield an empty result, never an unhandled TypeError/AttributeError."""
     if not isinstance(data, dict) or "error" in data:
@@ -246,35 +155,39 @@ def parse_wiktionary_json(data: dict, lang_candidates: tuple[str, ...],
     if not isinstance(wikitext, str):
         return []
 
-    section = None
-    for heading in lang_candidates:
-        m = re.search(rf"(?m)^=={re.escape(heading)}==\s*$", wikitext)
-        if not m:
-            continue
-        rest = wikitext[m.end():]
-        nxt = re.search(r"(?m)^==[^=]", rest)
-        section = rest[:nxt.start()] if nxt else rest
-        break
-    if section is None:
-        return []
+    # Slice the page into (language, section_text) in page order.
+    headings = list(_L2_HEADING_RE.finditer(wikitext))
+    sections: list[tuple[str, str]] = []
+    for i, m in enumerate(headings):
+        end = headings[i + 1].start() if i + 1 < len(headings) else len(wikitext)
+        sections.append((m.group(1).strip(), wikitext[m.end():end]))
 
-    glosses = [_clean_wikitext(g) for g in _GLOSS_LINE_RE.findall(section)[:6]]
-    glosses = [g for g in glosses if g]
-    if not glosses:
-        return []
+    rel_re = re.compile(related_pattern) if related_pattern else None
+    primary = [s for s in sections if s[0] in lang_candidates]
+    related = [s for s in sections
+               if s[0] not in lang_candidates and rel_re and rel_re.search(s[0])]
 
     title = parse.get("title") or fallback_title
     from urllib.parse import quote
     url = f"https://en.wiktionary.org/wiki/{quote(title)}"
-    return [OnlineResult(headword=title, pos="", gloss="; ".join(glosses), url=url)]
+
+    results: list[OnlineResult] = []
+    for lang, section in (primary + related)[:6]:
+        glosses = [_clean_wikitext(g) for g in _GLOSS_LINE_RE.findall(section)[:6]]
+        glosses = [g for g in glosses if g]
+        if not glosses:
+            continue
+        results.append(OnlineResult(headword=title, pos=lang,
+                                    gloss="; ".join(glosses), url=url))
+    return results
 
 
 def fetch_wiktionary(word: str, lang_candidates: tuple[str, ...],
+                     related_pattern: str | None = None,
                      timeout: float = 6.0) -> tuple[list[OnlineResult], str | None]:
-    """MediaWiki action=parse for `word`, extract whichever of
-    `lang_candidates` L2 (==Heading==) section is present, and pull its
-    numbered gloss lines. A missing page or missing language section is a
-    clean empty result, not an error."""
+    """MediaWiki action=parse for `word`; see parse_wiktionary_json for
+    which language sections are kept. A missing page or missing language
+    section is a clean empty result, not an error."""
     import json as _json
     text, err = _get_capped(_WIKT_API, {
         "action": "parse", "page": word, "format": "json",
@@ -286,7 +199,122 @@ def fetch_wiktionary(word: str, lang_candidates: tuple[str, ...],
         data = _json.loads(text)
     except ValueError:
         return [], "Wiktionary returned an unreadable response"
-    return parse_wiktionary_json(data, lang_candidates, word), None
+    return parse_wiktionary_json(data, lang_candidates, word, related_pattern), None
+
+
+# --- Wiktionary: related pages (action=query&list=search) -------------------
+
+def parse_wiktionary_search_json(data: dict, query: str,
+                                 limit: int = 8) -> list[OnlineResult]:
+    """Pure parser for a full-text search response. Each hit becomes a
+    linked result whose gloss is the (HTML-stripped) match snippet. The
+    exact page, if it is itself a hit, is dropped — the exact-entry source
+    already covers it, so this stays purely the *wider* net."""
+    if not isinstance(data, dict):
+        return []
+    query_block = data.get("query")
+    if not isinstance(query_block, dict):
+        return []
+    hits = query_block.get("search")
+    if not isinstance(hits, list):
+        return []
+
+    out: list[OnlineResult] = []
+    from urllib.parse import quote
+    for hit in hits:
+        if not isinstance(hit, dict):
+            continue
+        title = hit.get("title")
+        if not isinstance(title, str) or not title:
+            continue
+        if title == query:          # the exact entry is covered elsewhere
+            continue
+        snippet = _strip_html(hit.get("snippet", ""))[:200]
+        out.append(OnlineResult(
+            headword=title, pos="",
+            gloss=snippet,
+            url=f"https://en.wiktionary.org/wiki/{quote(title)}"))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def fetch_wiktionary_search(word: str,
+                            timeout: float = 6.0) -> tuple[list[OnlineResult], str | None]:
+    import json as _json
+    text, err = _get_capped(_WIKT_API, {
+        "action": "query", "list": "search", "srsearch": word,
+        "format": "json", "formatversion": 2, "srlimit": 8}, timeout)
+    if err is not None:
+        msg = err if err == _NO_REQUESTS_MSG else f"couldn't reach Wiktionary just now ({err})"
+        return [], msg
+    try:
+        data = _json.loads(text)
+    except ValueError:
+        return [], "Wiktionary returned an unreadable response"
+    return parse_wiktionary_search_json(data, word), None
+
+
+# --- Wikidata lexemes (wbsearchentities&type=lexeme) ------------------------
+
+_WIKIDATA_API = "https://www.wikidata.org/w/api.php"
+
+
+def parse_wikidata_lexemes_json(data: dict, lang_labels: tuple[str, ...],
+                                limit: int = 8) -> list[OnlineResult]:
+    """Pure parser for a lexeme search response. Wikidata describes each
+    lexeme as e.g. "Arabic, noun"; we keep only those whose language name
+    (the part before the first comma) is one of `lang_labels`, so the
+    Arabic dictionary doesn't surface New-Persian or Ottoman-Turkish
+    lexemes that merely share the Arabic-script spelling."""
+    if not isinstance(data, dict):
+        return []
+    hits = data.get("search")
+    if not isinstance(hits, list):
+        return []
+
+    wanted = {l.lower() for l in lang_labels}
+    out: list[OnlineResult] = []
+    for hit in hits:
+        if not isinstance(hit, dict):
+            continue
+        desc = hit.get("description")
+        if not isinstance(desc, str) or not desc:
+            continue
+        parts = [p.strip() for p in desc.split(",")]
+        lang_name = parts[0] if parts else ""
+        if lang_name.lower() not in wanted:
+            continue
+        pos = parts[1] if len(parts) > 1 else ""
+        label = hit.get("label") or hit.get("title") or ""
+        url = hit.get("url") or ""
+        if url.startswith("//"):
+            url = "https:" + url
+        elif url.startswith("/"):
+            url = "https://www.wikidata.org" + url
+        out.append(OnlineResult(headword=str(label), pos=pos,
+                                gloss=lang_name, url=url))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def fetch_wikidata_lexemes(word: str, lang_labels: tuple[str, ...],
+                           search_lang: str = "en",
+                           timeout: float = 6.0) -> tuple[list[OnlineResult], str | None]:
+    import json as _json
+    text, err = _get_capped(_WIKIDATA_API, {
+        "action": "wbsearchentities", "search": word, "language": search_lang,
+        "uselang": "en", "type": "lexeme", "format": "json",
+        "formatversion": 2, "limit": 15}, timeout)
+    if err is not None:
+        msg = err if err == _NO_REQUESTS_MSG else f"couldn't reach Wikidata just now ({err})"
+        return [], msg
+    try:
+        data = _json.loads(text)
+    except ValueError:
+        return [], "Wikidata returned an unreadable response"
+    return parse_wikidata_lexemes_json(data, lang_labels), None
 
 
 # --- orchestration ------------------------------------------------------------
@@ -302,20 +330,44 @@ def _run_source(fn) -> tuple[list, str | None]:
         return [], f"online source failed ({exc.__class__.__name__})"
 
 
+#: label + fetch closure per source id. Order here is display order in the
+#: UI (exact entry first, then the wider nets). Each entry maps a source id
+#: to (human label, factory taking the DictConfig+query -> fetch callable).
+def _sources_for(cfg, query: str) -> "list[tuple[str, str, object]]":
+    catalogue = {
+        "wiktionary": (
+            "Wiktionary — dictionary entries",
+            lambda: fetch_wiktionary(query, cfg.wiktionary_lang_candidates,
+                                     cfg.wiktionary_related_pattern)),
+        "wiktionary_search": (
+            "Wiktionary — related pages",
+            lambda: fetch_wiktionary_search(query)),
+        "wikidata": (
+            "Wikidata — lexemes",
+            lambda: fetch_wikidata_lexemes(query, cfg.wikidata_lang_labels)),
+    }
+    ordered = []
+    for sid in cfg.online_sources:
+        if sid in catalogue:
+            label, fn = catalogue[sid]
+            ordered.append((sid, label, fn))
+    return ordered
+
+
 def lookup_online(cfg, query: str) -> dict:
     """The only entry point app.py touches. `cfg` is a
-    dict_registry.DictConfig; `query` is the word in its own script
-    (Syriac for the Syriac dictionary, Arabic for the Arabic one) — the
-    same text CAL needs transliterated and Wiktionary needs as a page
-    title, so both sources are driven from one input."""
-    sources: dict[str, dict] = {}
-    if "cal" in cfg.online_sources:
-        results, error = _run_source(lambda: fetch_cal(query))
-        sources["cal"] = {"label": "CAL — Comprehensive Aramaic Lexicon",
-                          "results": [asdict(r) for r in results], "error": error}
-    if "wiktionary" in cfg.online_sources:
-        results, error = _run_source(
-            lambda: fetch_wiktionary(query, cfg.wiktionary_lang_candidates))
-        sources["wiktionary"] = {"label": "Wiktionary",
-                                 "results": [asdict(r) for r in results], "error": error}
+    dict_registry.DictConfig; `query` is the word in its own script. Every
+    source in cfg.online_sources is queried and reported independently, so
+    one slow or empty source never hides the others.
+
+    `sources` is a *list* (not a dict): display order is meaningful — the
+    exact entry first, then the wider nets — and a JSON object's key order
+    isn't dependable across the serializer (Flask sorts object keys), so
+    the order is carried in the list itself."""
+    sources: list[dict] = []
+    for sid, label, fn in _sources_for(cfg, query):
+        results, error = _run_source(fn)
+        sources.append({"id": sid, "label": label,
+                        "results": [asdict(r) for r in results],
+                        "error": error})
     return {"query": query, "sources": sources}

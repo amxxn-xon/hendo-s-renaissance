@@ -19,6 +19,18 @@
 #  * Bare (pausal) teh marbuta emits nothing — row "ة#".
 #  * Qur'anic annotation signs dropped with a flag.
 #
+# TODO for the vetting session (user feedback, 2026-07-08 — Ameen finds
+# the Malayalam output rough; concrete items for the convention owner,
+# once Dr. Amaldev assigns one):
+#  * Word-final nasals: chillu ൻ vs ന് (മിന് vs മിൻ) — decide per position.
+#  * Case-ending vowels (-u/-i/-a on nouns): keep them (അല്ലഹു) or prefer
+#    pausal citation forms (Kerala usage suggests pausal)? v0 keeps them
+#    because the QAC forms carry them.
+#  * Dagger-alif length: the stored forms render അല്ലഹു/allahi with a
+#    short a (the Uthmani dagger alif isn't treated as long ā anywhere in
+#    the v0 tables, Latin or Malayalam) — the convention owner should
+#    decide whether ٰ maps to ā/ആ across both tables.
+#
 # token	output	notes
 ء	@carrier	hamza as vowel-carrier — cf. ജുമുഅ pattern; VERIFY
 أ	@carrier	

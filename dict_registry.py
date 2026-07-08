@@ -21,7 +21,7 @@ ROOT = Path(__file__).resolve().parent
 #: Single source of truth for the app version — rendered in the header
 #: badge (base.html via app.py's context processor) and sent as the
 #: User-Agent version by online_lookup.py.
-VERSION = "1.0"
+VERSION = "1.7"
 
 
 def build_syriac_keyboard() -> dict:
@@ -67,6 +67,8 @@ class DictConfig:
     other_label: str                   # shown on the toggle link
     online_sources: tuple[str, ...]    # which online_lookup.py sources to query
     wiktionary_lang_candidates: tuple[str, ...]  # Wiktionary L2 headings to look for
+    wiktionary_related_pattern: str        # regex over L2 headings for related languages
+    wikidata_lang_labels: tuple[str, ...]  # Wikidata lexeme language names to keep
 
     @property
     def db_path(self) -> Path:
@@ -81,8 +83,16 @@ SYRIAC = DictConfig(
     keyboard_builder=build_syriac_keyboard,
     other_slug="arabic",
     other_label="Arabic → Malayalam",
-    online_sources=("cal", "wiktionary"),
+    # No Wikidata: Classical Syriac lexemes are still too sparse there to
+    # be worth a query (verified empty, 2026-07-07). Wiktionary's exact
+    # entry + related-page search cover the Syriac side.
+    online_sources=("wiktionary", "wiktionary_search"),
     wiktionary_lang_candidates=("Classical Syriac", "Syriac"),
+    # Related Aramaic varieties whose sections share the page (verified on
+    # the fixture page for ܫܠܡܐ: Assyrian Neo-Aramaic, Turoyo, Western
+    # Neo-Aramaic) — shown labelled, never merged with Classical Syriac.
+    wiktionary_related_pattern=r"Aramaic$|^Turoyo$",
+    wikidata_lang_labels=("Classical Syriac", "Syriac"),
 )
 
 ARABIC = DictConfig(
@@ -93,8 +103,13 @@ ARABIC = DictConfig(
     keyboard_builder=build_arabic_keyboard,
     other_slug="syriac",
     other_label="East Syriac → Malayalam",
-    online_sources=("wiktionary",),  # CAL is Aramaic-only, not Arabic
+    online_sources=("wiktionary", "wiktionary_search", "wikidata"),
     wiktionary_lang_candidates=("Arabic",),
+    # Dialect sections ("Egyptian Arabic", "South Levantine Arabic", …)
+    # share the page; keep them, labelled. Persian/Urdu/Ottoman Turkish
+    # sections of the same spelling stay excluded.
+    wiktionary_related_pattern=r"Arabic$",
+    wikidata_lang_labels=("Arabic",),
 )
 
 DICTS = {SYRIAC.slug: SYRIAC, ARABIC.slug: ARABIC}

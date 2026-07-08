@@ -1,0 +1,62 @@
+# translit_ipa.tsv — DRAFT v0 — UNVETTED
+# IPA rendering rules over the translit_lat column's scholarly romanization
+# symbols (the source symbol inventory was read off both compiled stores,
+# 2026-07-08 — every symbol that actually occurs is covered below; the
+# engine, suriyani/ipa.py, adds no mappings of its own and yields NO IPA at
+# all if it meets a symbol not listed here — an honest gap over a wrong
+# guess, per DECISIONS №20).
+# VET: convention owner unassigned — flagged for Dr. Amaldev. VERIFY notes
+# mark rows where the scholarly symbol under-determines the sound.
+#
+# Longest source sequence wins (e.g. 'uw' before 'u'). Shared by both
+# dictionaries: the romanization symbols are common; where Syriac and
+# Arabic values would genuinely differ, the row says so.
+#
+# token	output	notes
+uw	uː	VERIFY: mater contraction — uw usually spells ū
+iy	iː	VERIFY: mater contraction — iy usually spells ī
+ay	aj
+aw	aw
+ʾ	ʔ
+ʿ	ʕ
+b	b
+ḇ	v	VERIFY: Syriac spirantized bet — v in East Syriac reading tradition
+g	ɡ
+ḡ	ɣ	Syriac spirantized gamal
+ġ	ɣ	Arabic ghayn
+d	d
+ḏ	ð
+ḍ	dˤ	Arabic emphatic dad
+h	h
+ḥ	ħ
+ḫ	x	Arabic kha (camel_morph romanization)
+w	w
+z	z
+ẓ	ðˤ	VERIFY: Arabic za — ðˤ classical, zˤ in much modern usage
+ṭ	tˤ
+y	j
+k	k
+ḵ	x	spirantized kap / kha
+l	l
+m	m
+n	n
+s	s
+š	ʃ
+ṣ	sˤ
+p	p
+f	f
+q	q
+r	r
+t	t
+ṯ	θ
+j	dʒ	Arabic jim
+a	a
+ā	aː
+e	e	VERIFY: covers both zlama qualities — SEDRA's scheme carries no split
+i	i
+ī	iː
+u	u
+ū	uː
+̄	ː	stray combining macron = length on the preceding vowel
+ 	 	word space passes through
+-	-	segment hyphen passes through

@@ -25,6 +25,7 @@ import json
 from pathlib import Path
 
 from . import lexical_aids, sedra3
+from . import ipa
 from .corpus import PeshittaBook
 from .olam import OlamIndex, pivot
 from .translit import RuleTable, transliterate_latin, transliterate_malayalam
@@ -33,9 +34,11 @@ ENTRY_FIELDS = [
     "word_id", "headword_eastern", "headword_western", "headword_bare",
     "sedra3_vocalised", "lemma", "lexeme_id", "root", "root_id", "pos",
     "morphology", "morph_summary", "is_lexical_form", "has_seyame",
-    "is_enclitic", "translit_lat", "translit_ml", "translit_flags",
+    "is_enclitic", "translit_lat", "translit_ml", "translit_ipa",
+    "translit_flags",
     "gloss_en", "gloss_ml", "freq", "example_ref", "example_text",
-    "example_hl", "lemma_link_word_id", "provenance", "confidence",
+    "example_hl", "attestations", "lemma_link_word_id", "provenance",
+    "confidence",
 ]
 
 # Constant per-field provenance for this backbone. The eastern/western
@@ -53,6 +56,7 @@ _PROVENANCE = {
     "gloss_ml": "Olam English→Malayalam pivot (ODbL); machine draft, unvalidated",
     "translit_lat": "rule table tables/translit_syr_lat.tsv — DRAFT v0, UNVETTED",
     "translit_ml": "rule table tables/translit_syr_ml.tsv — DRAFT v0, UNVETTED",
+    "translit_ipa": "rule table tables/translit_ipa.tsv over translit_lat — DRAFT v0, UNVETTED",
     "example": "Peshitta NT (BFBS) via SEDRA III BFBS.TXT; consonantal rendering",
 }
 
@@ -69,6 +73,7 @@ _CONFIDENCE = {
     "gloss_ml": "machine_draft",
     "translit_lat": "draft_unvetted",
     "translit_ml": "draft_unvetted",
+    "translit_ipa": "draft_unvetted",
     "example": "source",
 }
 
@@ -80,7 +85,8 @@ _LEXICAL_AIDS_PDF = "lexical-aids-3rd-ed-2024.pdf"
 
 
 def assemble_entries(repo_root: Path, top_n: int,
-                     use_lexical_aids: bool = True) -> tuple[list[dict], dict]:
+                     use_lexical_aids: bool = True,
+                     book: int | None = 52) -> tuple[list[dict], dict]:
     """Build entry dicts for the top_n most frequent Matthew word records,
     plus (by default) any additional SEDRA word-records that Lexical Aids
     to the Syriac New Testament's own whole-NT frequency ranking flags as
@@ -99,10 +105,14 @@ def assemble_entries(repo_root: Path, top_n: int,
     lexemes = sedra3.parse_lexemes(d / "LEXEMES.TXT")
     words = sedra3.parse_words(d / "WORDS.TXT")
     english = sedra3.parse_english(d / "ENGLISH.TXT")
-    matthew = PeshittaBook.load(d / "BFBS.TXT", book_code=52)
+    # book=52 (Matthew) is the original scope and what the tests pin;
+    # book=None compiles the whole Peshitta NT from the same vendored file
+    # (no new source, no new licence — just no book filter).
+    matthew = PeshittaBook.load(d / "BFBS.TXT", book_code=book)
 
     lat_table = RuleTable(repo_root / "tables" / "translit_syr_lat.tsv")
     ml_table = RuleTable(repo_root / "tables" / "translit_syr_ml.tsv")
+    ipa_table_path = repo_root / "tables" / "translit_ipa.tsv"
     olam = OlamIndex(repo_root / "data" / "olam" / "olam-enml.tsv")
 
     selected = matthew.top(top_n)
@@ -170,6 +180,7 @@ def assemble_entries(repo_root: Path, top_n: int,
 
         gloss_ml = pivot(meanings, olam) if meanings else []
         example = matthew.example_for(wid, words)
+        attestations = matthew.attestations_for(wid, words)
 
         prov = dict(_PROVENANCE)
         conf = dict(_CONFIDENCE)
@@ -210,6 +221,7 @@ def assemble_entries(repo_root: Path, top_n: int,
             "is_enclitic": int(w.is_enclitic),
             "translit_lat": translit_lat,
             "translit_ml": translit_ml,
+            "translit_ipa": ipa.render(translit_lat, ipa_table_path),
             "translit_flags": json.dumps(sorted(lat.flags | ml.flags)),
             "gloss_en": "; ".join(meanings) if meanings else None,
             "gloss_ml": json.dumps(gloss_ml, ensure_ascii=False),
@@ -217,6 +229,7 @@ def assemble_entries(repo_root: Path, top_n: int,
             "example_ref": example["ref"] if example else None,
             "example_text": example["text"] if example else None,
             "example_hl": json.dumps(example["highlight"]) if example else None,
+            "attestations": json.dumps(attestations, ensure_ascii=False),
             "lemma_link_word_id":
                 citation_of.get(w.lexeme_id) if (w.lexeme_id is not None
                 and not w.is_lexical_form) else None,

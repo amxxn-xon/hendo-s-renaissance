@@ -1,22 +1,49 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="hero">
-  <p class="lede">A {{ meta.get('dict_label', 'East Syriac → Malayalam') }} dictionary, compiled
-  offline from {{ meta.get('sources_label', 'SEDRA III and the Peshitta') }}. The store currently holds
-  <strong>{{ total }}</strong> entries
-  {%- if total|int > meta.get('top_n','0')|int %} — the top
-  <strong>{{ meta.get('top_n','?') }}</strong> most frequent word-forms of
-  <em>{{ meta.get('corpus_label', 'Matthew') }}</em>, plus
-  <strong>{{ total|int - meta.get('top_n','0')|int }}</strong> more words widened in via
-  <em>Lexical Aids to the Syriac New Testament</em>'s whole-NT frequency ranking
-  {%- else %}, the top <strong>{{ meta.get('top_n','?') }}</strong> most frequent word-forms of
-  <em>{{ meta.get('corpus_label', 'Matthew') }}</em>
-  {%- endif %} — type or paste above, or tap letters below.</p>
-  <div id="kmw-status" class="kbd-status"></div>
-  <div id="kbd" class="kbd" aria-label="On-screen {{ 'Syriac' if cfg.slug == 'syriac' else 'Arabic' }} reference keyboard"></div>
+  <p class="lede">Type a word in the search box above — in
+  {{ 'Syriac' if cfg.slug == 'syriac' else 'Arabic' }}, or just spell it out
+  in English letters or Malayalam. Or wander: follow a word's family in the
+  <a href="{{ url_for('.roots') }}">root tree</a>, leaf through
+  <a href="{{ url_for('.browse') }}">everything</a>, or open a
+  <a href="{{ url_for('.random_entry') }}">random entry</a>. Every entry was
+  prepared ahead of time from {{ meta.get('sources_label', 'trusted sources') }};
+  this site never invents an answer on the spot.</p>
+  <div class="stats">
+    <a class="stat" href="{{ url_for('.browse') }}"><b>{{ total }}</b> entries</a>
+    <a class="stat" href="{{ url_for('.roots') }}"><b>{{ n_roots }}</b> roots</a>
+    <span class="stat"><b>{{ n_lemmas }}</b> lemmas</span>
+    <a class="stat stat-go" href="{{ url_for('.random_entry') }}">Random entry →</a>
+  </div>
+  <p class="coverage muted">Covers the
+  <strong>{{ meta.get('top_n','?') }}</strong> most frequent words of
+  <em>{{ meta.get('corpus_label', 'the corpus') }}</em>
+  {%- if total|int > meta.get('top_n','0')|int %}, plus
+  <strong>{{ total|int - meta.get('top_n','0')|int }}</strong> more chosen by
+  how often they appear across the whole New Testament (<em>Lexical Aids to
+  the Syriac New Testament</em>){% endif %} — and it grows with every update.</p>
+  <details class="kbd-details" open>
+    <summary>⌨ On-screen {{ 'Syriac' if cfg.slug == 'syriac' else 'Arabic' }} keyboard <span class="muted">(click to hide)</span></summary>
+    <div id="kmw-status" class="kbd-status"></div>
+    <div id="kbd" class="kbd" aria-label="On-screen {{ 'Syriac' if cfg.slug == 'syriac' else 'Arabic' }} reference keyboard"></div>
+  </details>
 </section>
+
+{% if wotd %}
 <section>
-  <h2 class="lab">In the store — highest frequency first</h2>
+  <h2 class="lab">Word of the day</h2>
+  <a class="card wotd" href="{{ url_for('.entry', word_id=wotd.word_id) }}">
+    <span class="{{ cfg.font_class }} card-hw wotd-hw">{{ wotd.headword_eastern or wotd.headword_bare }}</span>
+    {% if wotd.translit_ml %}<span class="ml card-ml">{{ wotd.translit_ml }}</span>{% endif %}
+    <span class="card-gloss">{{ (wotd.gloss_en or '—').split(';')[0] }}</span>
+    <span class="chip">{{ wotd.pos }} · {{ wotd.freq }}× {{ meta.get('freq_label','') }}</span>
+  </a>
+</section>
+{% endif %}
+
+<details class="cards-details">
+  <summary><span class="lab lab-inline">Common words — most frequent first</span>
+    <span class="muted">(click to show)</span></summary>
   <div class="cards">
   {% for s in samples %}
     <a class="card" href="{{ url_for('.entry', word_id=s.word_id) }}">
@@ -27,5 +54,9 @@
     </a>
   {% endfor %}
   </div>
-</section>
+  <p class="note muted">Little grammar words — the ones that mean “and”,
+  “but”, “not”, “in” — are left out of this list so it stays interesting.
+  They're all still in the dictionary: search for them, or find them under
+  <a href="{{ url_for('.browse') }}">Browse</a>.</p>
+</details>
 {% endblock %}

@@ -15,11 +15,31 @@
 
   var SLUG = window.DICT_SLUG || "syriac";
 
+  function refreshSuggest(input) {
+    // Tap-keys don't fire a native input event, so the suggest dropdown
+    // (and anything else listening) would lag one keypress behind.
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
   function insertAtCaret(input, text) {
     input.focus();
     var s = input.selectionStart, e = input.selectionEnd;
-    if (s === null || s === undefined) { input.value += text; return; }
-    input.setRangeText(text, s, e, "end");
+    if (s === null || s === undefined) { input.value += text; }
+    else { input.setRangeText(text, s, e, "end"); }
+    refreshSuggest(input);
+  }
+
+  function deleteAtCaret(input) {
+    input.focus();
+    var s = input.selectionStart, e = input.selectionEnd;
+    if (s === null || s === undefined) {
+      input.value = input.value.slice(0, -1);
+    } else if (s !== e) {
+      input.setRangeText("", s, e, "end");
+    } else if (s > 0) {
+      input.setRangeText("", s - 1, e, "end");
+    }
+    refreshSuggest(input);
   }
 
   function buildRow(container, keys, input) {
@@ -47,16 +67,76 @@
     if (el) el.textContent = msg;
   }
 
+  function hideKeymanOsk() {
+    // Keyman's floating on-screen keyboard pops up over the page whenever
+    // the attached input gets focus (the "overlay on the left") and its
+    // own styling doesn't follow our theme. We only want the *hardware*
+    // key mapping (physical keys -> Syriac); our own tap-keyboard covers
+    // on-screen input. Belt and braces: the API call now, and a CSS kill
+    // rule in style.css for anything it re-shows later.
+    try {
+      if (window.keyman && window.keyman.osk) window.keyman.osk.hide();
+    } catch (e) { /* OSK API shape varies between KMW versions */ }
+  }
+
+  // Hardware Syriac typing is OPT-IN: by default the PC keyboard types
+  // plain English in the search box (which the transliteration and
+  // meaning search understand); flipping the switch below the on-screen
+  // keyboard attaches Keyman's east_syriac_qwerty layout instead. The
+  // choice persists in localStorage and applies on every page.
+  var KMW_PREF = "kmw_hw";
+
+  function keymanWanted() {
+    try { return localStorage.getItem(KMW_PREF) === "1"; } catch (e) { return false; }
+  }
+
+  function setKeymanWanted(on) {
+    try { localStorage.setItem(KMW_PREF, on ? "1" : "0"); } catch (e) {}
+    // Attaching is clean; detaching mid-session is not (KMW keeps hooks on
+    // the input) — a reload gives a guaranteed-clean state either way.
+    window.location.reload();
+  }
+
+  function renderKeymanSwitch(on, note) {
+    var el = document.getElementById("kmw-status");
+    if (!el) return;                       // switch lives on the home page
+    el.textContent = "";
+    var msg = document.createElement("span");
+    msg.textContent = (note || (on
+      ? "Your PC keyboard now types Syriac in the search box. "
+      : "Your PC keyboard types English here — the search understands transliterations and meanings. ")) + " ";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "pill";
+    btn.textContent = on ? "Switch my keyboard back to English"
+                         : "Switch my PC keyboard to Syriac";
+    btn.addEventListener("click", function () { setKeymanWanted(!on); });
+    el.appendChild(msg);
+    el.appendChild(btn);
+  }
+
   function tryKeyman() {
     if (SLUG !== "syriac") return;   // only a verified keyboard id for Syriac
+    if (!keymanWanted()) {
+      renderKeymanSwitch(false);
+      return;
+    }
     if (window.__kmwFailed || !window.keyman) {
-      status("Keyman CDN not reachable — the tap-keyboard below works offline.");
+      renderKeymanSwitch(false,
+        "Keyman CDN not reachable — Syriac hardware typing unavailable; the tap-keyboard below works offline.");
       return;
     }
     window.keyman.init({ attachType: "auto" })
       .then(function () { return window.keyman.addKeyboards("east_syriac_qwerty@syr"); })
-      .then(function () { status("Keyman east_syriac_qwerty attached to the search box; the tap-keyboard below also works."); })
-      .catch(function () { status("Keyman failed to initialise — using the tap-keyboard."); });
+      .then(function () {
+        hideKeymanOsk();
+        var input = document.getElementById("q");
+        if (input) input.addEventListener("focus", hideKeymanOsk);
+        renderKeymanSwitch(true);
+      })
+      .catch(function () {
+        renderKeymanSwitch(false, "Keyman failed to initialise — using the tap-keyboard.");
+      });
   }
 
   // --- live "closest headword" suggestions ----------------------------------
@@ -91,6 +171,14 @@
         a.appendChild(hw);
         a.appendChild(gloss);
         a.addEventListener("mouseenter", function () { mark(i); });
+        // Navigate on pointerdown, not click: pressing the mouse blurs the
+        // input, whose blur handler hides this box after 150ms — a slower
+        // click's mouseup then landed on nothing and the entry never
+        // opened. pointerdown fires before any of that.
+        a.addEventListener("pointerdown", function (ev) {
+          ev.preventDefault();
+          window.location = a.href;
+        });
         box.appendChild(a);
       });
       box.hidden = false;
@@ -138,10 +226,29 @@
         .then(function (data) {
           buildRow(kbd, data.letters, input);
           buildRow(kbd, data.points, input);
+          // Editing keys — pure input manipulation, no characters of
+          // their own. Backspace matters on touch devices, where the
+          // tap-keyboard is the only way to compose a query.
+          var row = document.createElement("div");
+          row.className = "kbd-row";
+          var back = document.createElement("button");
+          back.type = "button";
+          back.className = "key key-wide";
+          back.textContent = "⌫ backspace";
+          back.title = "Delete the character before the cursor";
+          back.addEventListener("click", function () { deleteAtCaret(input); });
+          row.appendChild(back);
+          kbd.appendChild(row);
         })
         .catch(function () { kbd.textContent = "keyboard unavailable"; });
     }
     if (input) tryKeyman();
-    if (input && suggestBox) initSuggest(input, suggestBox);
+    if (input && suggestBox) {
+      // On pages with the on-screen keyboard (home), suggestions flow in
+      // the page instead of floating over it — so the dropdown never
+      // covers the keys and you can tap letters while watching matches.
+      if (kbd) suggestBox.classList.add("suggest-inline");
+      initSuggest(input, suggestBox);
+    }
   });
 })();

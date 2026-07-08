@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
-"""tests/test_online_lookup.py — the live CAL/Wiktionary section.
+"""tests/test_online_lookup.py — the live Wiktionary/Wikidata section.
 
     python3 tests/test_online_lookup.py
 
 This is the one part of the project that deliberately reaches a network
-API at query time (DECISIONS.md №28) — everything else stays compile-time
-only. The parsing/ranking logic is tested against **saved real responses**
-(tests/fixtures/*, fetched and cited 2026-07-05 — never hand-typed, per
-the no-fabrication rule) so the suite doesn't depend on the network or on
-CAL/Wiktionary staying up; one live smoke test per source is included too,
-and skips cleanly (not a failure) if the network/site is unreachable, same
-convention as the rest of this suite.
+API at query time (DECISIONS.md №28, widened in №33) — everything else
+stays compile-time only. The parsing/filtering logic is tested against
+**saved real responses** (tests/fixtures/*, fetched and cited 2026-07-05
+and 2026-07-07 — never hand-typed, per the no-fabrication rule) so the
+suite doesn't depend on the network or on the sites staying up; one live
+smoke test per source is included too, and skips cleanly (not a failure)
+if the network/site is unreachable, same convention as the rest of this
+suite.
 """
 
 from __future__ import annotations
@@ -28,44 +29,7 @@ from dict_registry import ARABIC, SYRIAC                    # noqa: E402
 FIXTURES = ROOT / "tests" / "fixtures"
 
 
-def test_cal_translit_covers_all_22_consonants():
-    import unicodedata
-    assert len(ol.CAL_TRANSLIT) == 22
-    for ch, code in ol.CAL_TRANSLIT.items():
-        assert unicodedata.name(ch).startswith("SYRIAC LETTER"), (ch, code)
-    assert ol.to_cal("ܫܠܡܐ") == "$lm)"
-    assert ol.to_cal("ܕܝܢ") == "dyn"
-    assert ol.to_cal("ܫ̈") is None  # seyame isn't a consonant — must reject, not skip silently
-
-
-def test_loose_forms_agree_between_cal_display_and_ascii_key():
-    # "šlmˀ" (CAL's own unvocalized citation-form display text, e.g. the
-    # .lem span in a real result) and "$lm)" (this module's ASCII search
-    # key for the same word) must collapse to the same comparison string
-    # — that's the whole point of _loose()/_loose_from_cal_key(). Both
-    # sides here are bare consonants (no vowels), matching what CAL's own
-    # citation-form spans actually contain.
-    assert ol._loose("šlmˀ") == ol._loose_from_cal_key("$lm)")
-    assert ol._loose("ṣlmˀ") == ol._loose_from_cal_key("clm)")
-
-
-def test_parse_cal_html_finds_the_real_entry():
-    # Fixture: a real response fetched 2026-07-05 for first3="$lm" —
-    # https://cal.huc.edu/browseSKEYheaders.php?first3=%22%24lm%22
-    html_text = (FIXTURES / "cal_shlm_response.html").read_text(encoding="utf-8")
-    results = ol.parse_cal_html(html_text, cal_key="$lm)", limit=10)
-    assert results, "expected at least one parsed CAL entry"
-    matches = [r for r in results if "peace" in r.gloss]
-    assert matches, "the wellbeing/peace entry should be in the parsed results"
-    peace = matches[0]
-    assert peace.pos == "n.m."
-    assert "oneentry.php?lemma=" in peace.url
-    # ranking: the exact-match entries should sort before unrelated
-    # same-prefix entries (e.g. "Shulmat", "Shalmite" personal/place names)
-    exact_idx = results.index(peace)
-    assert exact_idx < len(results) - 1
-    assert not any("Shulman" in r.gloss for r in results[:exact_idx])
-
+# --- Wiktionary: exact entry ------------------------------------------------
 
 def test_parse_wiktionary_finds_classical_syriac_section():
     # Fixture: real action=parse response for page=ܫܠܡܐ, fetched 2026-07-05
@@ -103,13 +67,116 @@ def test_parse_wiktionary_survives_wrong_shape_json():
         assert ol.parse_wiktionary_json(bad, ("Arabic",), "x") == [], bad
 
 
-def test_live_cal_smoke():
-    results, error = ol.fetch_cal("ܫܠܡܐ", timeout=6.0)
-    if error:
-        print(f"  (skipped: live CAL unreachable — {error})")
-        return
-    assert any("peace" in r.gloss for r in results)
+def test_parse_wiktionary_surfaces_related_language_sections():
+    # The real ܫܠܡܐ page carries four Aramaic-family sections (verified
+    # 2026-07-08 against the saved fixture): Classical Syriac plus the
+    # related Assyrian Neo-Aramaic, Turoyo, and Western Neo-Aramaic. With
+    # the related pattern, all should surface — Classical Syriac FIRST,
+    # each labelled with its own section name.
+    data = json.loads((FIXTURES / "wiktionary_shlomo_syr.json").read_text(encoding="utf-8"))
+    results = ol.parse_wiktionary_json(
+        data, ("Classical Syriac", "Syriac"), "ܫܠܡܐ",
+        related_pattern=SYRIAC.wiktionary_related_pattern)
+    assert len(results) >= 2, "related Aramaic sections should widen the results"
+    assert results[0].pos == "Classical Syriac", "own language must rank first"
+    assert any(r.pos == "Assyrian Neo-Aramaic" for r in results)
+    # And the Arabic page: dialects kept, Persian/Urdu/Ottoman never leak.
+    data = json.loads((FIXTURES / "wiktionary_salam_ar.json").read_text(encoding="utf-8"))
+    results = ol.parse_wiktionary_json(
+        data, ("Arabic",), "سلام",
+        related_pattern=ARABIC.wiktionary_related_pattern)
+    assert results and results[0].pos == "Arabic"
+    assert all(r.pos.endswith("Arabic") for r in results)
 
+
+# --- Wiktionary: related-pages search ---------------------------------------
+
+def test_parse_wiktionary_search_widens_and_drops_exact_page():
+    # Fixture: real list=search response for srsearch=سلام, fetched 2026-07-07
+    data = json.loads((FIXTURES / "wiktionary_search_salam_ar.json").read_text(encoding="utf-8"))
+    results = ol.parse_wiktionary_search_json(data, "سلام")
+    assert results, "search should surface related pages"
+    # The exact page is covered by the exact-entry source, so it's dropped
+    # from the wider net to avoid duplication.
+    assert all(r.headword != "سلام" for r in results)
+    # Snippets are HTML-stripped (the API wraps matches in <span>).
+    assert all("<span" not in r.gloss and "</span>" not in r.gloss for r in results)
+
+
+def test_parse_wiktionary_search_works_for_syriac_too():
+    data = json.loads((FIXTURES / "wiktionary_search_shlomo_syr.json").read_text(encoding="utf-8"))
+    results = ol.parse_wiktionary_search_json(data, "ܫܠܡܐ")
+    assert results, "Syriac full-text search should return related pages"
+    assert all(r.url.startswith("https://en.wiktionary.org/wiki/") for r in results)
+
+
+def test_parse_wiktionary_search_survives_wrong_shape_json():
+    for bad in [None, 42, [], {}, {"query": None}, {"query": {"search": 5}},
+                {"query": {"search": [None, 7, "x"]}}]:
+        assert ol.parse_wiktionary_search_json(bad, "x") == [], bad
+
+
+# --- Wikidata lexemes -------------------------------------------------------
+
+def test_parse_wikidata_lexemes_keeps_only_target_language():
+    # Fixture: real wbsearchentities lexeme search for سلام, fetched
+    # 2026-07-07. It contains Arabic AND New Persian lexemes of the same
+    # spelling; the Arabic dictionary must keep only the Arabic ones.
+    data = json.loads((FIXTURES / "wikidata_lex_salam_ar.json").read_text(encoding="utf-8"))
+    results = ol.parse_wikidata_lexemes_json(data, ("Arabic",))
+    assert results, "Arabic lexemes should be found"
+    assert all(r.gloss == "Arabic" for r in results), \
+        "New Persian / other-language lexemes must be filtered out"
+    # Part of speech is pulled from the '<lang>, <pos>' description.
+    assert any(r.pos for r in results)
+    # Protocol-relative URLs are made absolute.
+    assert all(r.url.startswith("https://") for r in results if r.url)
+
+
+def test_parse_wikidata_lexemes_empty_for_sparse_syriac():
+    # Fixture: real (empty) lexeme search for ܫܠܡܐ — Classical Syriac
+    # lexemes are sparse on Wikidata. An empty search list is a clean [].
+    data = json.loads((FIXTURES / "wikidata_lex_shlomo_syr.json").read_text(encoding="utf-8"))
+    assert ol.parse_wikidata_lexemes_json(data, ("Classical Syriac", "Syriac")) == []
+
+
+def test_parse_wikidata_lexemes_survives_wrong_shape_json():
+    for bad in [None, 42, [], {}, {"search": None}, {"search": 5},
+                {"search": [None, 7, {"description": 3}]}]:
+        assert ol.parse_wikidata_lexemes_json(bad, ("Arabic",)) == [], bad
+
+
+# --- config / orchestration -------------------------------------------------
+
+def test_cal_is_gone_and_sources_are_configured_per_dict():
+    assert "cal" not in SYRIAC.online_sources
+    assert "cal" not in ARABIC.online_sources
+    # Wiktionary (both forms) serves both dictionaries; Wikidata is Arabic-only.
+    assert "wiktionary" in SYRIAC.online_sources
+    assert "wiktionary_search" in SYRIAC.online_sources
+    assert "wikidata" not in SYRIAC.online_sources
+    assert "wikidata" in ARABIC.online_sources
+
+
+def test_lookup_online_reports_every_configured_source():
+    # No network: monkeypatch the fetchers to deterministic empties, and
+    # confirm the orchestration reports one block per configured source in
+    # order, each with a label.
+    import online_lookup as m
+    saved = (m.fetch_wiktionary, m.fetch_wiktionary_search, m.fetch_wikidata_lexemes)
+    try:
+        m.fetch_wiktionary = lambda *a, **k: ([], None)
+        m.fetch_wiktionary_search = lambda *a, **k: ([], None)
+        m.fetch_wikidata_lexemes = lambda *a, **k: ([], None)
+        out = m.lookup_online(ARABIC, "سلام")
+        # sources is an ordered list; ids appear in cfg.online_sources order.
+        assert [s["id"] for s in out["sources"]] == list(ARABIC.online_sources)
+        assert all(s["label"] for s in out["sources"])
+    finally:
+        m.fetch_wiktionary, m.fetch_wiktionary_search, m.fetch_wikidata_lexemes = saved
+
+
+# --- live smoke tests (skip cleanly offline) --------------------------------
 
 def test_live_wiktionary_smoke():
     results, error = ol.fetch_wiktionary("ܫܠܡܐ", SYRIAC.wiktionary_lang_candidates, timeout=6.0)
@@ -119,24 +186,30 @@ def test_live_wiktionary_smoke():
     assert any("peace" in r.gloss for r in results)
 
 
-def test_lookup_online_respects_per_dict_sources():
-    # Structural check only (no network): Arabic must never ask CAL.
-    assert "cal" not in ARABIC.online_sources
-    assert "wiktionary" in ARABIC.online_sources
-    assert "cal" in SYRIAC.online_sources
+def test_live_wikidata_smoke():
+    results, error = ol.fetch_wikidata_lexemes("سلام", ARABIC.wikidata_lang_labels, timeout=6.0)
+    if error:
+        print(f"  (skipped: live Wikidata unreachable — {error})")
+        return
+    assert all(r.gloss == "Arabic" for r in results)
 
 
 TESTS = [
-    test_cal_translit_covers_all_22_consonants,
-    test_loose_forms_agree_between_cal_display_and_ascii_key,
-    test_parse_cal_html_finds_the_real_entry,
     test_parse_wiktionary_finds_classical_syriac_section,
     test_parse_wiktionary_ignores_wrong_language_section,
     test_parse_wiktionary_finds_arabic_section,
     test_parse_wiktionary_survives_wrong_shape_json,
-    test_lookup_online_respects_per_dict_sources,
-    test_live_cal_smoke,
+    test_parse_wiktionary_surfaces_related_language_sections,
+    test_parse_wiktionary_search_widens_and_drops_exact_page,
+    test_parse_wiktionary_search_works_for_syriac_too,
+    test_parse_wiktionary_search_survives_wrong_shape_json,
+    test_parse_wikidata_lexemes_keeps_only_target_language,
+    test_parse_wikidata_lexemes_empty_for_sparse_syriac,
+    test_parse_wikidata_lexemes_survives_wrong_shape_json,
+    test_cal_is_gone_and_sources_are_configured_per_dict,
+    test_lookup_online_reports_every_configured_source,
     test_live_wiktionary_smoke,
+    test_live_wikidata_smoke,
 ]
 
 if __name__ == "__main__":

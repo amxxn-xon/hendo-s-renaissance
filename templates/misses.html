@@ -1,16 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Logged misses{% endblock %}
 {% block content %}
-<h1 class="page-h">Logged misses</h1>
-<p class="muted">Searches that matched nothing in the store. These feed the
-word list of the next compile — the honest alternative to generating an
-answer on the spot.</p>
+<h1 class="page-h">Words people looked for</h1>
+<p class="muted">Every search that found nothing is saved here —
+<strong>{{ total }}</strong> so far, grouped and ranked by how often they
+were asked. This wish-list decides which words get added in the next
+update; the dictionary never fills a gap by guessing.</p>
 {% if rows %}
 <div class="table-scroll">
 <table class="miss-table">
-<tr><th>Normalised</th><th>As typed</th><th>When (UTC)</th></tr>
+<tr><th>Normalised</th><th>Times</th><th>Last as typed</th><th>Last seen (UTC)</th></tr>
 {% for r in rows %}
-<tr><td class="{{ cfg.font_class }}">{{ r.q_norm }}</td><td>{{ r.q }}</td><td>{{ r.ts }}</td></tr>
+<tr><td class="{{ cfg.font_class }}">{{ r.q_norm }}</td><td>{{ r.n }}×</td><td>{{ r.q }}</td><td>{{ r.last_ts }}</td></tr>
 {% endfor %}
 </table>
 </div>

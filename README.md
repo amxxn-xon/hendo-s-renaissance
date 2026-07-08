@@ -13,17 +13,19 @@ the Arabic port (`arabiyya/`, see ARABIC_PORT.md) has since proven.
 ```bash
 pip install -r requirements.txt                       # runtime: flask, requests, gunicorn
 pip install -r requirements-compile.txt               # compile-only: pymupdf (PDF parsing)
-python3 compile.py build --top 150     # SEDRA III + Peshitta (+ Lexical Aids
-                                        #   coverage boost, on by default) →
-                                        #   data/dictionary.db
-python3 compile_arabic.py build --top 150   # QAC + camel → data/dictionary_ar.db
+python3 compile.py build --top 800     # SEDRA III + whole Peshitta NT (+ Lexical
+                                        #   Aids boost, on by default) →
+                                        #   data/dictionary.db; --book 52 = Matthew only
+python3 compile_arabic.py build --top 600   # QAC + camel → data/dictionary_ar.db
 python3 app.py                         # → http://127.0.0.1:5000 — both dictionaries,
                                         #   /syriac/ and /arabic/, toggle in the header
 python3 tests/test_core.py             # 9 checks, all doc-anchored
 python3 tests/test_arabic.py           # 6 checks, data-anchored
 python3 tests/test_lexical_aids.py     # 6 checks, data-anchored
-python3 tests/test_app.py              # 10 checks, unified-app smoke tests
-python3 tests/test_online_lookup.py    # 10 checks, fixture-anchored (2 live, skip offline)
+python3 tests/test_app.py              # 25 checks, unified-app (routes, roots, root cards,
+                                        #   translit + English + meaning search, lemma
+                                        #   pages, attestations, draft IPA)
+python3 tests/test_online_lookup.py    # 15 checks, fixture-anchored (2 live, skip offline)
 ```
 
 One further command matters, and it must run on a normal home/campus
@@ -135,8 +137,8 @@ column.
 
 An always-on Python host with a writable disk fits this app better than a
 serverless platform: it writes to the `misses` table, makes outbound calls
-that can take several seconds (CAL/Wiktionary), and is a long-running Flask
-server by design. `render.yaml` is a ready blueprint.
+that can take several seconds (Wiktionary/Wikidata), and is a long-running
+Flask server by design. `render.yaml` is a ready blueprint.
 
 1. **Keep the proprietary PDF out of the repo.** `data/lexical_aids/*.pdf`
    is git-ignored (Gorgias Press, all rights reserved — DECISIONS №27); it

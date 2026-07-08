@@ -18,6 +18,16 @@
 #    not a phonetic claim; needs the convention.
 #  * Linea occultans not applied; silenced letters still print.
 #
+# TODO for the vetting session (user feedback, 2026-07-08 — Ameen finds
+# the Malayalam output rough; concrete items for Joju's convention call):
+#  * Word-final nasals/liquids: v0 prints ന്/ല്/ര് (base + virama); modern
+#    Malayalam usage would write chillu ൻ/ൽ/ർ (e.g. ദെയ്ന് vs ദെയ്ൻ).
+#    Decide chillu policy per letter and position.
+#  * Mater contraction (the യെശുവ്/ഈശോ item above) is the single biggest
+#    readability gap — long ū/ī spellings need the convention's word forms.
+#  * Word-final ʿe/ʾalap after a vowel: does the convention drop, glide,
+#    or carry them? v0 prints a bare വ്/യ് cluster that reads awkwardly.
+#
 # token	output	notes
 A	@carrier	alaph as vowel-carrier
 B	ബ	

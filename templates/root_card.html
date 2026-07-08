@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}Root {{ root }} — {{ meta.get('dict_label','') }} Dictionary{% endblock %}
+{% block content %}
+<p class="context"><a href="{{ url_for('.roots') }}">← All roots</a></p>
+
+<article class="entry">
+  <div class="hw-block">
+    <h1 class="{{ cfg.font_class }} hw">{{ root }}</h1>
+    <div class="hw-tools"><span class="chip">root ·
+      {{ n_words }} word{{ 's' if n_words != 1 }} in this dictionary ·
+      {{ total_freq }}× in {{ meta.get('corpus_label','the corpus') }}</span></div>
+  </div>
+
+  <p class="muted rootcard-lede">Words that grow from the same root usually
+  share a core meaning. Outlined bubbles are dictionary forms; filled ones
+  are the shapes they actually take in the text — bigger means more
+  frequent. Drag them around, or click one for details.</p>
+  <p class="graph-actions">
+    <button type="button" class="pill graph-fs">⛶ Full screen</button>
+  </p>
+
+  <div class="root-graph-wrap">
+    <div id="root-graph" class="root-graph" data-font-class="{{ cfg.font_class }}"></div>
+    <aside id="root-info" class="root-info" hidden></aside>
+  </div>
+  <script id="graph-data" type="application/json">{{ graph|tojson }}</script>
+
+  <section>
+    <h2 class="lab">The same family, as a list</h2>
+    {% for g in groups %}
+    <div class="lemma-group">
+      <h3 class="lemma-group-head">
+        <span class="{{ cfg.font_class }} lemma-group-hw">{{ g.label }}</span>
+        {% if g.gloss %}<span class="root-entry-gloss">{{ g.gloss }}</span>{% endif %}
+        {% if g.url and g.forms|length > 1 %}
+          <a class="root-view-link" href="{{ g.url }}">all {{ g.forms|length }} forms →</a>
+        {% endif %}
+      </h3>
+      <ul class="root-entries">
+      {% for f in g.forms %}
+        <li>
+          <a class="{{ cfg.font_class }} root-entry-hw" href="{{ f.url }}">{{ f.hw }}</a>
+          <span class="root-entry-pos">{{ f.morph or f.pos }}</span>
+          <span class="root-entry-gloss">{{ f.gloss or '—' }}</span>
+          <span class="chip">{{ f.freq }}× {{ meta.get('freq_label','') }}</span>
+        </li>
+      {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </section>
+</article>
+<script src="{{ url_for('static', filename='rootgraph.js') }}" defer></script>
+{% endblock %}

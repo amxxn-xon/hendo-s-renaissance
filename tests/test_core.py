@@ -120,8 +120,14 @@ def test_lookup_paths() -> None:
     con.row_factory = sqlite3.Row
     before = con.execute("SELECT COUNT(*) FROM misses").fetchone()[0]
 
+    # In the Matthew-only store this skeleton matched one record (4405,
+    # "but; yet"); the whole-NT corpus legitimately adds SEDRA record 4420
+    # ("judge", same consonants, different vocalisation) — so the correct
+    # result is either a single entry (old store) or ranked candidates with
+    # 4405 first (freq 1828 vs 2). Both are honest; a silent pick would not be.
     r = resolve(con, "ܕܝܢ", log_misses=False)
-    assert r.kind == "entry" and r.entries[0]["word_id"] == 4405
+    assert r.kind in ("entry", "candidates")
+    assert r.entries[0]["word_id"] == 4405, "most frequent reading must rank first"
 
     r = resolve(con, "ܐܡܪ", log_misses=False)
     assert r.kind == "candidates" and len(r.entries) >= 2

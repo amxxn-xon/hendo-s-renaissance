@@ -4,7 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ meta.get('dict_label','') }} Dictionary{% endblock %}</title>
+<meta name="description" content="A {{ meta.get('dict_label','') }} dictionary built from {{ meta.get('sources_label','trusted sources') }} — search, browse, and explore word families by root. Hendo Projects · IIT Goa.">
+<meta name="theme-color" content="#8a1f1f">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%238a1f1f'/%3E%3Crect x='22' y='30' width='56' height='8' rx='4' fill='%23faf9f6'/%3E%3Crect x='22' y='46' width='56' height='8' rx='4' fill='%23faf9f6'/%3E%3Crect x='42' y='62' width='36' height='8' rx='4' fill='%23faf9f6'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script>/* apply a saved theme before first paint to avoid a flash */
+try { var t = localStorage.getItem("theme");
+      if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Malayalam:wght@400;600&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Syriac+Eastern&display=swap" rel="stylesheet">
@@ -13,13 +19,17 @@
 <script src="https://s.keyman.com/kmw/engine/18.0.249/keymanweb.js" defer onerror="window.__kmwFailed=true"></script>
 <script src="{{ url_for('static', filename='keyboard.js') }}" defer></script>
 <script src="{{ url_for('static', filename='online.js') }}" defer></script>
+<script src="{{ url_for('static', filename='ui.js') }}" defer></script>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header class="site">
   <div class="brand">
     <a class="site-title" href="{{ url_for('.index') }}">{{ meta.get('dict_label','') }} Dictionary</a>
     {% if cfg.slug == 'syriac' %}<span class="site-ml ml">സുറിയാനി–മലയാളം നിഘണ്ടു</span>{% endif %}
     <span class="proto">v{{ version }}</span>
+    <button type="button" id="theme-toggle" class="theme-toggle"
+            title="Switch between light and dark" aria-label="Switch between light and dark">◐</button>
   </div>
   <nav class="dict-toggle" aria-label="Switch dictionary">
     <a href="{{ url_for('syriac.index') }}"
@@ -39,10 +49,10 @@
     <button type="submit">Search</button>
   </form>
   <nav class="nav">
-    <a href="{{ url_for('.index') }}">Home</a><a href="{{ url_for('.about') }}">About</a><a href="{{ url_for('.misses') }}">Misses</a>
+    <a href="{{ url_for('.index') }}">Home</a><a href="{{ url_for('.browse') }}">Browse</a><a href="{{ url_for('.roots') }}">Roots</a><a href="{{ url_for('.about') }}">About</a><a href="{{ url_for('.misses') }}">Misses</a>
   </nav>
 </header>
-<main>
+<main id="main">
 {% block content %}{% endblock %}
 </main>
 <footer>
@@ -51,8 +61,8 @@
   Archive (SEDRA) by George A. Kiraz, distributed by the Syriac Computing
   Institute.</p>
   <p>Peshitta NT text: BFBS, via SEDRA III · Malayalam draft glosses pivot
-  through <a href="https://olam.in">Olam</a> (ODbL) · Compiled offline,
-  served read-only — nothing on this site is generated at query time.</p>
+  through <a href="https://olam.in">Olam</a> (ODbL) · Every entry is prepared
+  in advance from these sources — this site never invents an answer.</p>
   {% else %}
   <p class="ack">Morphological annotation from the <strong>Qur'anic Arabic
   Corpus</strong> (© 2011 Kais Dukes, GNU GPL) — see
@@ -60,8 +70,8 @@
   Tanzil Uthmani v1.0.2 (© Tanzil.info, CC BY-ND 3.0).</p>
   <p>English glosses cross-matched from <strong>camel_morph MSA v1.0</strong>
   (MIT, © NYU Abu Dhabi) · Malayalam draft glosses pivot through
-  <a href="https://olam.in">Olam</a> (ODbL) · Compiled offline, served
-  read-only — nothing on this site is generated at query time.</p>
+  <a href="https://olam.in">Olam</a> (ODbL) · Every entry is prepared in
+  advance from these sources — this site never invents an answer.</p>
   {% endif %}
   <p class="credit">Automating Dictionary Compilation — Hendo Projects ·
   built by project interns <strong><a href="https://www.linkedin.com/in/ameenthelinguist/"

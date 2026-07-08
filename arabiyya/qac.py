@@ -208,6 +208,15 @@ class QuranCorpus:
             self.verses[(t.chapter, t.verse)].append(t)
         for vt in self.verses.values():
             vt.sort(key=lambda t: t.word_pos)
+        #: signature -> every distinct (chapter, verse) it appears in, mushaf
+        #: order — built once so attestations_for() is a lookup, not a rescan.
+        self.sig_verses: dict[tuple, list[tuple[int, int]]] = defaultdict(list)
+        _sv_seen: set[tuple] = set()
+        for t in tokens:                        # file order == mushaf order
+            key = (t.signature, t.chapter, t.verse)
+            if key not in _sv_seen:
+                _sv_seen.add(key)
+                self.sig_verses[t.signature].append((t.chapter, t.verse))
 
     @classmethod
     def load(cls, path: Path) -> "QuranCorpus":
@@ -243,9 +252,20 @@ class QuranCorpus:
         t0 = self.first_seen.get(sig)
         if t0 is None:
             return None
-        verse = self.verses[(t0.chapter, t0.verse)]
+        return self._render_verse(t0.chapter, t0.verse, sig)
+
+    def _render_verse(self, chapter: int, verse_no: int, sig: tuple) -> dict:
+        verse = self.verses[(chapter, verse_no)]
         return {
-            "ref": f"Qur'an {t0.chapter}:{t0.verse}",
+            "ref": f"Qur'an {chapter}:{verse_no}",
             "text": " ".join(t.form_ar for t in verse),
             "highlight": [i for i, t in enumerate(verse) if t.signature == sig],
         }
+
+    def attestations_for(self, sig: tuple, limit: int = 20) -> dict:
+        """Every verse (up to `limit`) where this word occurs, mushaf order
+        — the full concordance within the Qur'an, rendered vocalised like
+        example_for(). Returns {"total": N, "shown": [{ref,text,highlight}]}."""
+        verses = self.sig_verses.get(sig, [])
+        shown = [self._render_verse(c, v, sig) for c, v in verses[:limit]]
+        return {"total": len(verses), "shown": shown}

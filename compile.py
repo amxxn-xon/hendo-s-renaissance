@@ -48,6 +48,7 @@ CREATE TABLE entries (
     is_enclitic        INTEGER NOT NULL,
     translit_lat       TEXT,
     translit_ml        TEXT,
+    translit_ipa       TEXT,
     translit_flags     TEXT NOT NULL,
     gloss_en           TEXT,
     gloss_ml           TEXT NOT NULL,
@@ -55,6 +56,7 @@ CREATE TABLE entries (
     example_ref        TEXT,
     example_text       TEXT,
     example_hl         TEXT,
+    attestations       TEXT,
     lemma_link_word_id INTEGER,
     provenance         TEXT NOT NULL,
     confidence         TEXT NOT NULL
@@ -77,11 +79,16 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
 def cmd_build(args: argparse.Namespace) -> None:
     from suriyani.backbone import ENTRY_FIELDS, assemble_entries
+    from suriyani.sedra3 import BOOK_NAMES
     from suriyani.sedra_api import SEYAME
 
-    print(f"Compiling top {args.top} Matthew word records ...")
+    book = None if args.book == "all" else int(args.book)
+    corpus_name = ("the whole Peshitta NT" if book is None
+                   else BOOK_NAMES.get(book, f"book {book}"))
+    print(f"Compiling top {args.top} word records of {corpus_name} ...")
     entries, stats = assemble_entries(ROOT, args.top,
-                                      use_lexical_aids=not args.no_lexical_aids)
+                                      use_lexical_aids=not args.no_lexical_aids,
+                                      book=book)
     if not args.no_lexical_aids and stats.get("lexical_aids_parsed"):
         print(f"  Lexical Aids to the Syriac NT: parsed {stats['lexical_aids_parsed']}, "
               f"corrupted {stats['lexical_aids_corrupted']}, "
@@ -111,16 +118,24 @@ def cmd_build(args: argparse.Namespace) -> None:
             con.execute("INSERT INTO surface_index VALUES (?,?,?)",
                         (noseyame, e["word_id"], "bare_noseyame"))
 
+    if book is None:
+        corpus_meta = "Peshitta NT (BFBS) via SEDRA III — all books"
+        corpus_label = "the Peshitta NT"
+        freq_label = "NT"
+    else:
+        corpus_meta = f"Peshitta NT (BFBS) via SEDRA III — {corpus_name} (book {book})"
+        corpus_label = f"{corpus_name} (Peshitta NT)"
+        freq_label = "Mt" if book == 52 else corpus_name[:3]
     meta = {
         "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "top_n": str(args.top),
         "language": "syriac",
         "script": "syriac",
-        "corpus": "Peshitta NT (BFBS) via SEDRA III — Matthew (book 52)",
-        "corpus_label": "Matthew (Peshitta NT)",
+        "corpus": corpus_meta,
+        "corpus_label": corpus_label,
         "dict_label": "East Syriac → Malayalam",
         "sources_label": "SEDRA III and the Peshitta",
-        "freq_label": "Mt",
+        "freq_label": freq_label,
         "stats": json.dumps(stats),
     }
     con.executemany("INSERT INTO meta VALUES (?,?)", meta.items())
@@ -171,7 +186,10 @@ def main() -> None:
 
     b = sub.add_parser("build", help="compile the dictionary store from SEDRA III")
     b.add_argument("--top", type=int, default=150,
-                   help="how many top-frequency Matthew word records to compile")
+                   help="how many top-frequency word records to compile")
+    b.add_argument("--book", default="all",
+                   help="'all' for the whole Peshitta NT (default), or a "
+                        "SEDRA book code (52 = Matthew, the original scope)")
     b.add_argument("--db", default=str(DB_DEFAULT))
     b.add_argument("--no-lexical-aids", action="store_true",
                    help="skip the Lexical Aids to the Syriac NT coverage boost "

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 import sqlite3
 import unicodedata
 from dataclasses import dataclass, field
@@ -37,6 +38,50 @@ def _is_syriac(ch: str) -> bool:
 
 def _is_arabic(ch: str) -> bool:
     return 0x0600 <= ord(ch) <= 0x06FF
+
+
+def _is_malayalam(ch: str) -> bool:
+    return 0x0D00 <= ord(ch) <= 0x0D7F
+
+
+def _looks_latin(s: str) -> bool:
+    return any("a" <= ch.casefold() <= "z" for ch in s)
+
+
+def _looks_malayalam(s: str) -> bool:
+    return any(_is_malayalam(ch) for ch in s)
+
+
+#: How English speakers usually type the scholarly diacritic letters that
+#: actually occur in the stores' translit_lat columns (inventory checked
+#: against both stores, 2026-07-08). Comparison-only \u2014 never shown.
+_DIGRAPH_MAP = {
+    "\u0161": "sh", "\u1e6f": "th", "\u1e0f": "dh", "\u1e35": "kh", "\u1e2b": "kh",
+    "\u0121": "gh", "\u1e21": "gh", "\u1e25": "h", "\u1e6d": "t", "\u1e63": "s", "\u1e0d": "d",
+    "\u1e93": "z", "\u1e07": "v",
+}
+
+
+def _translit_folds(s: str) -> set[str]:
+    """Fold a Latin transliteration to bare a\u2013z0\u20139 comparison strings \u2014
+    BOTH the academic strip (\u0161\u2192s: "slama") and the everyday English
+    digraph rendering (\u0161\u2192sh: "shlama"), so a user can type either. NFD
+    drops the length marks (\u0101\u2192a) and the modifier letters (\u02be, \u02bf)
+    disappear with the punctuation strip. This is a *comparison*
+    normalisation only \u2014 never a claim about how a word should be
+    transliterated (those conventions live in the editable, still-draft
+    tables/ TSVs). The stored transliteration is shown verbatim; only
+    throwaway copies are folded to decide whether a typed query matches."""
+    base = unicodedata.normalize("NFC", s or "").casefold()
+    variants = {base, "".join(_DIGRAPH_MAP.get(ch, ch) for ch in base)}
+    out = set()
+    for v in variants:
+        nfd = unicodedata.normalize("NFD", v)
+        kept = "".join(ch for ch in nfd if not unicodedata.combining(ch))
+        folded = "".join(ch for ch in kept if ch.isalnum() and ch.isascii())
+        if folded:
+            out.add(folded)
+    return out
 
 
 #: Per-script input filters. Which one applies is read from the store's
@@ -138,34 +183,148 @@ def _near_matches(con: sqlite3.Connection, bare: str, limit: int = 8) -> list[di
     return suggestions[:limit]
 
 
+def translit_candidates(con: sqlite3.Connection, raw: str,
+                        limit: int = 8) -> list[sqlite3.Row]:
+    """Entries whose stored transliteration matches a typed Latin or
+    Malayalam query — the "type it how it sounds" path.
+
+    Pure retrieval: it compares the query against the `translit_lat` /
+    `translit_ml` columns the *compiler* already wrote (both DRAFT/unvetted,
+    like everything transliterated here), never anything minted now. Both
+    tables are small, so a fold-and-scan in Python is trivial and lets us
+    strip scholarly diacritics that SQL can't. Exact matches rank above
+    prefix matches, then by frequency.
+    """
+    raw = (raw or "").strip()[:_MAX_TYPED]
+    if not raw:
+        return []
+    latin = _translit_folds(raw) if _looks_latin(raw) else set()
+    mal = unicodedata.normalize("NFC", raw) if _looks_malayalam(raw) else ""
+    if not latin and not mal:
+        return []
+    fuzzy_ok = any(len(q) >= 4 for q in latin)   # short queries: no fuzzing
+
+    scored: list[tuple[float, int, sqlite3.Row]] = []
+    for r in con.execute("SELECT * FROM entries"):
+        score = None
+        if latin and r["translit_lat"]:
+            folds = _translit_folds(r["translit_lat"])
+            if latin & folds:
+                score = 0.0                                   # exact
+            elif any(len(q) >= 2 and f.startswith(q)
+                     for q in latin for f in folds):
+                score = 1.0                                   # prefix
+            elif any(len(f) >= 3 and q.startswith(f)
+                     for q in latin for f in folds):
+                # The typed form EXTENDS a stored one — "baytun" when the
+                # store has "baytu" (a case ending, a suffix, an -un
+                # nunation the user added). Weaker than a stored prefix,
+                # still clearly the same word.
+                score = 1.5
+            elif fuzzy_ok:
+                # "yeshua" vs "yeshuw" — close but not a prefix. Best
+                # similarity across variant pairs, anchored on the first
+                # letter: without that anchor, "baytun" scored 0.83
+                # against "ayatun" (ʾāyatun) — same tail, different word.
+                best = max((difflib.SequenceMatcher(None, q, f).ratio()
+                            for q in latin for f in folds
+                            if q[:1] == f[:1]), default=0.0)
+                if best >= 0.78:
+                    score = 3.0 - best                        # 2.02 … 2.22
+        if score is None and mal and r["translit_ml"]:
+            m = unicodedata.normalize("NFC", r["translit_ml"])
+            if m == mal:
+                score = 0.0
+            elif len(mal) >= 2 and m.startswith(mal):
+                score = 1.0
+        if score is not None:
+            scored.append((score, -r["freq"], r))
+    scored.sort(key=lambda t: (t[0], t[1]))
+    return [r for _, __, r in scored[:limit]]
+
+
+_GLOSS_WORD_RE = re.compile(r"[a-z]+")
+
+
+def gloss_candidates(con: sqlite3.Connection, raw: str,
+                     limit: int = 8) -> list[sqlite3.Row]:
+    """Entries whose stored English gloss contains the typed word — the
+    "search by meaning" path ("house" → every entry glossed as house).
+
+    Pure retrieval over the compiler's own gloss_en column, whole-word
+    matches only (a substring match would make "art" hit "heart"). A
+    trailing -s is forgiven so "houses" still finds "house". Entries whose
+    FIRST sense matches rank above ones that mention the word later, then
+    by frequency."""
+    raw = (raw or "").strip().casefold()[:_MAX_TYPED]
+    if not raw or not _looks_latin(raw):
+        return []
+    q = " ".join(_GLOSS_WORD_RE.findall(raw))
+    if len(q) < 3:                     # 'a', 'to' … would flood the store
+        return []
+    probes = {q}
+    if q.endswith("s") and len(q) > 3:
+        probes.add(q[:-1])
+
+    scored: list[tuple[int, int, sqlite3.Row]] = []
+    for r in con.execute(
+            "SELECT * FROM entries WHERE gloss_en IS NOT NULL AND gloss_en != ''"):
+        gl = r["gloss_en"].casefold()
+        words = set(_GLOSS_WORD_RE.findall(gl))
+        if probes & words:
+            first_sense = set(_GLOSS_WORD_RE.findall(gl.split(";")[0]))
+            scored.append((0 if probes & first_sense else 1, -r["freq"], r))
+    scored.sort(key=lambda t: (t[0], t[1]))
+    return [r for _, __, r in scored[:limit]]
+
+
 def resolve(con: sqlite3.Connection, q: str, log_misses: bool = True) -> Resolution:
     row = con.execute("SELECT value FROM meta WHERE key='script'").fetchone()
     norm = normalise(q, script=row[0] if row else "syriac")
-    if not norm.typed:
-        return Resolution(kind="empty", norm=norm)
 
-    # 1. Vocalised input against fetched eastern forms (only meaningful
-    #    once fetch-vocalised has run; harmless no-op before that).
-    if norm.typed != norm.bare:
+    if norm.typed:
+        # 1. Vocalised input against fetched eastern forms (only meaningful
+        #    once fetch-vocalised has run; harmless no-op before that).
+        if norm.typed != norm.bare:
+            ids = [r[0] for r in con.execute(
+                "SELECT DISTINCT word_id FROM surface_index "
+                "WHERE surface = ? AND kind = 'eastern'", (norm.typed,))]
+            if ids:
+                return Resolution(kind="entry" if len(ids) == 1 else "candidates",
+                                  norm=norm, entries=_entries_for_ids(con, ids),
+                                  matched_on="eastern")
+
+        # 2. Consonantal skeleton against the bare index.
         ids = [r[0] for r in con.execute(
             "SELECT DISTINCT word_id FROM surface_index "
-            "WHERE surface = ? AND kind = 'eastern'", (norm.typed,))]
+            "WHERE surface = ? AND kind IN ('bare','bare_noseyame','bare_folded')",
+            (norm.bare,))]
         if ids:
             return Resolution(kind="entry" if len(ids) == 1 else "candidates",
                               norm=norm, entries=_entries_for_ids(con, ids),
-                              matched_on="eastern")
+                              matched_on="bare")
 
-    # 2. Consonantal skeleton against the bare index.
-    ids = [r[0] for r in con.execute(
-        "SELECT DISTINCT word_id FROM surface_index "
-        "WHERE surface = ? AND kind IN ('bare','bare_noseyame','bare_folded')",
-        (norm.bare,))]
-    if ids:
-        return Resolution(kind="entry" if len(ids) == 1 else "candidates",
-                          norm=norm, entries=_entries_for_ids(con, ids),
-                          matched_on="bare")
+    # 3. Transliteration fallback: a Latin ("shlama") or Malayalam query
+    #    against the stored translit columns. For in-script input this is a
+    #    clean no-op (the fold produces no Latin/ML probe), so it only ever
+    #    *adds* a way to reach an already-compiled entry.
+    tl = translit_candidates(con, q)
+    if tl:
+        return Resolution(kind="entry" if len(tl) == 1 else "candidates",
+                          norm=norm, entries=tl, matched_on="translit")
 
-    # 3. Miss: near matches from stored surfaces only.
+    # 3b. English-meaning fallback: "house" → entries glossed as house.
+    #     Runs only when no transliteration matched, so a romanized word
+    #     that happens to be English ("men") keeps its translit reading.
+    gl = gloss_candidates(con, q)
+    if gl:
+        return Resolution(kind="entry" if len(gl) == 1 else "candidates",
+                          norm=norm, entries=gl, matched_on="gloss")
+
+    if not norm.typed:
+        return Resolution(kind="empty", norm=norm)
+
+    # 4. Miss: near matches from stored surfaces only.
     suggestions = _near_matches(con, norm.bare, limit=8)
 
     if log_misses:
@@ -196,7 +355,19 @@ def suggest(con: sqlite3.Connection, q: str, script: str, limit: int = 8) -> lis
     """
     norm = normalise(q, script=script)
     if not norm.bare:
-        return []
+        # No in-script content — but the query may be a Latin or Malayalam
+        # transliteration ("shlama", "ദെയ്ന"). Offer those as suggestions,
+        # linking each back through its own transliteration so selecting one
+        # re-resolves to the same entry.
+        rows = translit_candidates(con, q, limit=limit)
+        out = []
+        for r in rows:
+            surface = (r["translit_lat"] if _looks_latin(q) and r["translit_lat"]
+                       else r["translit_ml"] or r["translit_lat"] or "")
+            out.append({"surface": surface, "word_id": r["word_id"],
+                        "headword_eastern": r["headword_eastern"],
+                        "gloss_en": r["gloss_en"], "freq": r["freq"]})
+        return out
     return _near_matches(con, norm.bare, limit=limit)
 
 

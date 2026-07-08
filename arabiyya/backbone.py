@@ -31,11 +31,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from suriyani import ipa
 from suriyani.backbone import ENTRY_FIELDS
 from suriyani.olam import OlamIndex, pivot
 from suriyani.translit import RuleTable
 
 from .buckwalter import skeleton, strip_lemma_index, to_arabic
+
+#: shared symbol→IPA table (the romanization symbol inventory is common to
+#: both dictionaries; see tables/translit_ipa.tsv — DRAFT v0, UNVETTED)
+_IPA_TABLE_PATH = Path(__file__).resolve().parent.parent / "tables" / "translit_ipa.tsv"
 from .glosses import CamelGlossIndex
 from .qac import POS_NAMES, QuranCorpus, WordToken
 from .translit_ar import transliterate_latin_ar, transliterate_malayalam_ar
@@ -58,6 +63,7 @@ _PROVENANCE = {
     "gloss_ml": "Olam English→Malayalam pivot (ODbL); machine draft, unvalidated",
     "translit_lat": "rule table tables/translit_ara_lat.tsv — DRAFT v0, UNVETTED",
     "translit_ml": "rule table tables/translit_ara_ml.tsv — DRAFT v0, UNVETTED",
+    "translit_ipa": "rule table tables/translit_ipa.tsv over translit_lat — DRAFT v0, UNVETTED",
     "example": "Qur'an, first attestation; verse rendered from QAC forms "
                "(vocalised), cited sura:aya",
 }
@@ -75,6 +81,7 @@ _CONFIDENCE = {
     "gloss_ml": "machine_draft",
     "translit_lat": "draft_unvetted",
     "translit_ml": "draft_unvetted",
+    "translit_ipa": "draft_unvetted",
     "example": "source",
 }
 
@@ -195,6 +202,7 @@ def assemble_entries(repo_root: Path, top_n: int) -> tuple[list[dict], dict]:
             stats["translit_gaps"] += 1
 
         example = corpus.example_for(sig)
+        attestations = corpus.attestations_for(sig)
         lexical = is_citation(t, lem)
 
         prov = dict(_PROVENANCE)
@@ -224,6 +232,7 @@ def assemble_entries(repo_root: Path, top_n: int) -> tuple[list[dict], dict]:
             "is_enclitic": 0,
             "translit_lat": translit_lat,
             "translit_ml": translit_ml,
+            "translit_ipa": ipa.render(translit_lat, _IPA_TABLE_PATH),
             "translit_flags": json.dumps(sorted(lat.flags | ml.flags)),
             "gloss_en": gloss_en,
             "gloss_ml": json.dumps(gloss_ml, ensure_ascii=False),
@@ -231,6 +240,7 @@ def assemble_entries(repo_root: Path, top_n: int) -> tuple[list[dict], dict]:
             "example_ref": example["ref"] if example else None,
             "example_text": example["text"] if example else None,
             "example_hl": json.dumps(example["highlight"]) if example else None,
+            "attestations": json.dumps(attestations, ensure_ascii=False),
             "lemma_link_word_id":
                 citation_of.get(lemma_ids[lem]) if (lem and not lexical) else None,
             "provenance": json.dumps(prov, ensure_ascii=False),

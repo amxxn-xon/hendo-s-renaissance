@@ -3,9 +3,13 @@
 {% block title %}{{ e.headword_bare }} — {{ meta.get('dict_label','') }} Dictionary{% endblock %}
 {% block content %}
 {% if searched %}
-<p class="context">Searched <span class="{{ cfg.font_class }}">{{ searched.typed }}</span>
-  {%- if searched.dropped_words %} · took the first of {{ searched.dropped_words + 1 }} words{% endif %}
-  {%- if matched_on == 'bare' and searched.typed != searched.bare %} · matched on the consonantal skeleton{% endif %}</p>
+<p class="context">Searched
+  {%- if matched_on == 'gloss' %} “{{ searched.raw[:40] }}” · matched on its English meaning
+  {%- elif matched_on == 'translit' %} “{{ searched.raw[:40] }}” · matched on its transliteration
+  {%- else %} <span class="{{ cfg.font_class }}">{{ searched.typed }}</span>
+    {%- if searched.dropped_words %} · took the first of {{ searched.dropped_words + 1 }} words{% endif %}
+    {%- if matched_on == 'bare' and searched.typed != searched.bare %} · matched on the consonantal skeleton{% endif %}
+  {%- endif %}</p>
 {% endif %}
 
 {% if not e.is_lexical_form and e.lemma %}
@@ -21,6 +25,17 @@
     {% if not e.headword_eastern %}
     <span class="badge b-pending" title="{{ provenance_text(e.provenance.get('headword_eastern')) }}">Madnhāyā vocalisation pending SEDRA IV fetch</span>
     {% endif %}
+    <div class="hw-tools">
+      {% if e.root_id %}<a class="pill pill-go"
+        href="{{ url_for('.root_card', root_id=e.root_id) }}"
+        title="See this word's whole root family as an interactive map">⬡ Root family</a>{% endif %}
+      {% if e.lexeme_id and form_count and form_count > 1 %}<a class="pill"
+        href="{{ url_for('.lemma', lexeme_id=e.lexeme_id) }}"
+        title="Every compiled form of this word">All {{ form_count }} forms</a>{% endif %}
+      <button type="button" class="copy-hw pill"
+        data-copy="{{ e.headword_eastern or e.headword_bare }}"
+        title="Copy the headword's Unicode to the clipboard">Copy headword</button>
+    </div>
   </div>
 
   <div class="tri">
@@ -30,7 +45,9 @@
     {% if e.translit_lat %}
       <span class="tri-lat" title="{{ provenance_text(e.provenance.get('translit_lat')) }}">{{ e.translit_lat }}</span>{{ confidence_badge(e.confidence.get('translit_lat')) }}
     {% endif %}
-    <code class="voc" title="{{ provenance_text(e.provenance.get('sedra3_vocalised')) }}">{{ e.sedra3_vocalised }}</code>
+    {% if e.translit_ipa %}
+      <span class="ipa" title="{{ provenance_text(e.provenance.get('translit_ipa')) }}">/{{ e.translit_ipa }}/</span>{{ confidence_badge(e.confidence.get('translit_ipa')) }}
+    {% endif %}
   </div>
 
   <section class="senses">
@@ -54,51 +71,143 @@
     <dl>
       {% if e.pos %}<dt>Category</dt><dd>{{ e.pos }}</dd>{% endif %}
       {% if e.morph_summary %}<dt>Morphology</dt><dd>{{ e.morph_summary }}</dd>{% endif %}
-      {% if e.lemma %}<dt>Lemma</dt><dd><span class="{{ cfg.font_class }}">{{ e.lemma }}</span></dd>{% endif %}
-      {% if e.root %}<dt>Root</dt><dd><span class="{{ cfg.font_class }}">{{ e.root }}</span></dd>{% endif %}
-      <dt>Frequency</dt><dd>{{ e.freq }}× in {{ meta.get('corpus_label','the corpus') }}</dd>
+      {% if e.lemma %}<dt>Lemma</dt><dd>
+        {%- if e.lexeme_id and form_count and form_count > 1 -%}
+          <a class="root-link" href="{{ url_for('.lemma', lexeme_id=e.lexeme_id) }}"
+             title="See all {{ form_count }} forms of this word"><span class="{{ cfg.font_class }}">{{ e.lemma }}</span>
+            <span class="root-link-hint">all {{ form_count }} forms →</span></a>
+        {%- else -%}
+          <span class="{{ cfg.font_class }}">{{ e.lemma }}</span>
+        {%- endif -%}
+      </dd>{% endif %}
+      {% if e.root %}<dt>Root</dt><dd><a class="root-link" href="{{ url_for('.root_card', root_id=e.root_id) }}"
+        title="See this word's whole family"><span class="{{ cfg.font_class }}">{{ e.root }}</span>
+        <span class="root-link-hint">see the family →</span></a></dd>{% endif %}
+      <dt>Frequency</dt><dd>{{ e.freq }}× in {{ meta.get('corpus_label','the corpus') }}{% if freq_rank %} · #{{ freq_rank }} most frequent in this dictionary{% endif %}</dd>
     </dl>
     {% if e.has_seyame or e.is_enclitic %}
     <p>{% if e.has_seyame %}<span class="chip">seyame</span> {% endif %}{% if e.is_enclitic %}<span class="chip">enclitic</span>{% endif %}</p>
     {% endif %}
   </section>
 
+  {% if root_graph %}
+  <section class="entry-family">
+    <h2 class="lab">Root family — <span class="{{ cfg.font_class }}">{{ e.root }}</span></h2>
+    <p class="muted rootcard-lede">How this word hangs off its root: the
+    gold-ringed bubble is the word you're reading; outlined bubbles are
+    dictionary forms, filled ones the shapes they take in the text. Drag
+    them around, click one for details.</p>
+    <p class="graph-actions">
+      <a class="pill" href="{{ url_for('.root_card', root_id=e.root_id) }}"
+         target="_blank" rel="noopener">Open in its own tab ↗</a>
+      <button type="button" class="pill graph-fs">⛶ Full screen</button>
+    </p>
+    <div class="root-graph-wrap">
+      <div id="root-graph" class="root-graph root-graph-sm"
+           data-font-class="{{ cfg.font_class }}"
+           data-highlight="{{ e.word_id }}"></div>
+      <aside id="root-info" class="root-info" hidden></aside>
+    </div>
+    <script id="graph-data" type="application/json">{{ root_graph|tojson }}</script>
+    <script src="{{ url_for('static', filename='rootgraph.js') }}" defer></script>
+  </section>
+  {% elif not e.root %}
+  <p class="note muted">No family tree for this one: it's a little grammar
+  word, and the source data assigns it no root to hang a family from.</p>
+  {% endif %}
+
   {% if e.example_tokens %}
   <section class="example">
-    <h2 class="lab">First attestation</h2>
+    <h2 class="lab">{% if e.attest_total and e.attest_total > 1 %}Where it appears{% else %}Attestation{% endif %}</h2>
     <blockquote class="{{ cfg.font_class }} verse">{% for t in e.example_tokens %}{% if loop.index0 in e.example_hl %}<mark>{{ t }}</mark>{% else %}{{ t }}{% endif %}{% if not loop.last %} {% endif %}{% endfor %}</blockquote>
     <p class="cite">{{ e.example_ref }} · {{ meta.get('corpus_label','') }} · via {{ meta.get('sources_label','') }}</p>
+
+    {% if e.attestations|length > 1 %}
+    <details class="more-attest">
+      <summary>{% if e.attest_total > e.attestations|length %}Show {{ e.attestations|length }} of its {{ e.attest_total }} occurrences{% else %}Show all {{ e.attest_total }} verses it appears in{% endif %}</summary>
+      {% for a in e.attestations %}
+      <blockquote class="{{ cfg.font_class }} verse verse-sm">{% for t in a.tokens %}{% if loop.index0 in a.hl %}<mark>{{ t }}</mark>{% else %}{{ t }}{% endif %}{% if not loop.last %} {% endif %}{% endfor %}</blockquote>
+      <p class="cite">{{ a.ref }}</p>
+      {% endfor %}
+      {% if e.attest_total > e.attestations|length %}
+      <p class="muted cite">…and {{ e.attest_total - e.attestations|length }} more not shown here.</p>
+      {% endif %}
+    </details>
+    {% endif %}
   </section>
   {% endif %}
 
-  <section class="apparatus">
-    <h2 class="lab">Sources &amp; confidence</h2>
-    <p class="muted">Every field below is compiled once, offline, from the
-    source named — nothing on this page was generated when you searched.</p>
-    <div class="table-scroll">
-    <table>
-      <tr><th>Field</th><th>Provenance</th><th>Confidence</th></tr>
-      {% for field, src in e.provenance.items() %}
-      <tr>
-        <td>{{ field }}</td>
-        <td>{{ provenance_text(src) }}
-          {% if src is mapping and src.get('matches') %}
-          <details class="prov-matches">
-            <summary>{{ src.matches|length }} cross-matched record{{ 's' if src.matches|length != 1 else '' }}</summary>
-            <ul>
-            {% for m in src.matches %}
-              <li><span class="{{ cfg.font_class }}">{{ m.lex }}</span> — {{ m.pos }}, {{ m.tier }} match{% if not m.pos_compatible %} <span class="muted">(part-of-speech mismatch, shown anyway)</span>{% endif %}</li>
-            {% endfor %}
-            </ul>
-          </details>
-          {% endif %}
-        </td>
-        <td>{{ confidence_badge(e.confidence.get(field,'')) }}</td>
-      </tr>
-      {% endfor %}
-    </table>
-    </div>
-  </section>
+  <details class="apparatus">
+    <summary><span class="lab lab-inline">Where this entry comes from</span>
+      <span class="muted">— and how much checking each piece has had</span></summary>
+    <p class="muted">Everything above was prepared in advance from real
+    sources — nothing on this page was guessed. In plain terms:</p>
+    <ul class="prov-cards">
+      <li>{{ confidence_badge(e.confidence.get('headword_bare')) }}
+        <span><strong>The word and its grammar</strong> — read directly from
+        {{ meta.get('sources_label','the source data') }}.</span></li>
+      {% if cfg.slug == 'syriac' and not e.headword_eastern %}
+      <li>{{ confidence_badge(e.confidence.get('headword_eastern')) }}
+        <span><strong>The vowel marks</strong> — not fetched yet, so the
+        plain consonantal spelling is shown for now.</span></li>
+      {% endif %}
+      {% if e.gloss_en %}
+      <li>{{ confidence_badge(e.confidence.get('gloss_en')) }}
+        <span><strong>The English meaning</strong> —
+        {% if cfg.slug == 'syriac' %}from SEDRA's own glossary (derived from
+        the Payne Smith dictionary).{% else %}found by matching this word's
+        dictionary form against an independent Arabic lexicon — a weaker
+        chain than a native gloss, which is why it isn't marked
+        “source”.{% endif %}</span></li>
+      {% endif %}
+      {% if e.gloss_ml %}
+      <li>{{ confidence_badge(e.confidence.get('gloss_ml')) }}
+        <span><strong>The Malayalam suggestions</strong> — drafted
+        automatically by matching the English meaning through Olam's
+        English–Malayalam dictionary. A person hasn't reviewed them
+        yet.</span></li>
+      {% endif %}
+      {% if e.translit_ml or e.translit_lat %}
+      <li>{{ confidence_badge(e.confidence.get('translit_ml')) }}
+        <span><strong>How to read it</strong> (the Malayalam, Latin and
+        /IPA/ spellings) — from first-draft conversion tables that still
+        await an expert's check.</span></li>
+      {% endif %}
+      {% if e.example_tokens %}
+      <li>{{ confidence_badge(e.confidence.get('example')) }}
+        <span><strong>The verses</strong> — quoted word-for-word from
+        {{ meta.get('corpus_label','the text') }}.</span></li>
+      {% endif %}
+    </ul>
+    <details class="prov-tech">
+      <summary>Full technical record</summary>
+      <p class="muted">Source encoding:
+      <code class="voc" title="{{ provenance_text(e.provenance.get('sedra3_vocalised')) }}">{{ e.sedra3_vocalised }}</code></p>
+      <div class="table-scroll">
+      <table>
+        <tr><th>Field</th><th>Provenance</th><th>Confidence</th></tr>
+        {% for field, src in e.provenance.items() %}
+        <tr>
+          <td>{{ field }}</td>
+          <td>{{ provenance_text(src) }}
+            {% if src is mapping and src.get('matches') %}
+            <details class="prov-matches">
+              <summary>{{ src.matches|length }} cross-matched record{{ 's' if src.matches|length != 1 else '' }}</summary>
+              <ul>
+              {% for m in src.matches %}
+                <li><span class="{{ cfg.font_class }}">{{ m.lex }}</span> — {{ m.pos }}, {{ m.tier }} match{% if not m.pos_compatible %} <span class="muted">(part-of-speech mismatch, shown anyway)</span>{% endif %}</li>
+              {% endfor %}
+              </ul>
+            </details>
+            {% endif %}
+          </td>
+          <td>{{ confidence_badge(e.confidence.get(field,'')) }}</td>
+        </tr>
+        {% endfor %}
+      </table>
+      </div>
+    </details>
+  </details>
 </article>
 {% include "_online.html" %}
 {% endblock %}

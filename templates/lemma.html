@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% from "_macros.html" import confidence_badge %}
+{% block title %}{{ citation.lemma or citation.headword_bare }} — forms — {{ meta.get('dict_label','') }} Dictionary{% endblock %}
+{% block content %}
+<p class="context"><a href="{{ url_for('.browse') }}">← All entries</a>{% if citation.root %}
+  · <a href="{{ url_for('.root_card', root_id=citation.root_id) }}">root {{ citation.root }}</a>{% endif %}</p>
+
+<article class="entry">
+  <div class="hw-block">
+    <h1 class="{{ cfg.font_class }} hw">{{ citation.lemma or citation.headword_eastern or citation.headword_bare }}</h1>
+    <div class="hw-tools"><span class="chip">dictionary form ·
+      {{ forms|length }} form{{ 's' if forms|length != 1 }} in this dictionary</span></div>
+  </div>
+  {% if citation.gloss_en %}<p class="gloss-en">{{ citation.gloss_en }}</p>{% endif %}
+  {% if citation.pos %}<p class="muted rootcard-lede">{{ citation.pos }}</p>{% endif %}
+
+  <section>
+    <h2 class="lab">Every form in this dictionary</h2>
+    <p class="muted rootcard-lede">These are the shapes this word actually
+    takes in {{ meta.get('corpus_label','the text') }} — the dictionary form
+    first, then its inflected forms, most frequent first.</p>
+    <ul class="root-entries">
+    {% for f in forms %}
+      <li>
+        <a class="{{ cfg.font_class }} root-entry-hw"
+           href="{{ url_for('.entry', word_id=f.word_id) }}">{{ f.headword_eastern or f.headword_bare }}</a>
+        {% if f.is_lexical_form %}<span class="chip">dictionary form</span>{% endif %}
+        <span class="root-entry-pos">{{ f.morph_summary or f.pos or '' }}</span>
+        <span class="root-entry-gloss">{{ (f.gloss_en or '—')[:60] }}</span>
+        <span class="chip">{{ f.freq }}× {{ meta.get('freq_label','') }}</span>
+      </li>
+    {% endfor %}
+    </ul>
+  </section>
+</article>
+{% endblock %}

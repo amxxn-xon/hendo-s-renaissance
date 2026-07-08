@@ -1,10 +1,20 @@
 {% extends "base.html" %}
-{% block title %}{{ searched.typed }} — readings{% endblock %}
+{% block title %}{{ searched.typed or searched.raw }} — matches{% endblock %}
 {% block content %}
+{% if matched_on == 'gloss' %}
+<h1 class="page-h">{{ entries|length }} words meaning “{{ searched.raw.strip()[:40] }}”</h1>
+<p class="muted">Matched on each entry's English meaning — the most common
+word comes first.</p>
+{% elif matched_on == 'translit' %}
+<h1 class="page-h">{{ entries|length }} words spelled like “{{ searched.raw.strip()[:40] }}”</h1>
+<p class="muted">Matched on how each word is written in other letters —
+the most common one comes first.</p>
+{% else %}
 <h1 class="page-h">{{ entries|length }} readings for <span class="{{ cfg.font_class }}">{{ searched.typed }}</span></h1>
-<p class="muted">The source distinguishes same-spelled words by vocalisation
-and grammatical analysis; each reading below is a separate compiled entry,
-ranked by {{ meta.get('corpus_label','corpus') }} frequency.</p>
+<p class="muted">The same spelling can be read as more than one word — the
+vowels and the grammar tell them apart. Pick the reading you meant; the
+most common one comes first.</p>
+{% endif %}
 <div class="cand-list">
 {% for e in entries %}
   <a class="cand" href="{{ url_for('.entry', word_id=e.word_id) }}">

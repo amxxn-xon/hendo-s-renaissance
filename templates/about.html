@@ -2,23 +2,48 @@
 {% from "_macros.html" import confidence_legend %}
 {% block title %}About — {{ meta.get('dict_label','') }} Dictionary{% endblock %}
 {% block content %}
-<h1 class="page-h">About — Version {{ version }}</h1>
+<h1 class="page-h">About this dictionary</h1>
 
-<p>This is Version {{ version }} of <strong>Automating Dictionary
-Compilation</strong> (Hendo Projects): a {{ meta.get('dict_label','') }}
-dictionary whose entries are <em>compiled offline</em> from vetted sources
-and <em>served read-only</em>. The two machines are strictly separate: the
-compiler may consult databases, rule tables and a draft-gloss pivot; the
-lookup app you are using now can only retrieve what the compiler stored. No
-form, gloss, or transliteration is ever produced at query time.</p>
+<p>A {{ meta.get('dict_label','') }} dictionary, made by
+<strong>Hendo Projects</strong> with IIT Goa. Every entry was prepared
+ahead of time from real, named sources and is shown to you exactly as
+prepared — this site never invents a spelling, a meaning, or a
+pronunciation. If a word isn't here yet, it says so honestly, and your
+search helps decide what gets added next.</p>
 
-<p>Store built: {{ meta.get('built_at','—') }} · corpus:
-{{ meta.get('corpus','—') }} · top {{ meta.get('top_n','—') }} word-forms.</p>
+<p class="muted">Version {{ version }} · this copy was built on
+{{ meta.get('built_at','—') }} and covers the
+{{ meta.get('top_n','—') }} most frequent words of
+{{ meta.get('corpus','the corpus') }}.</p>
+
+<h2 class="lab">Ways to use it</h2>
+<ul class="about-ways">
+  <li><strong>Search</strong> in {{ 'Syriac' if cfg.slug == 'syriac' else 'Arabic' }},
+  or just spell the word out in English letters or Malayalam — the
+  dictionary matches it to the closest entry.</li>
+  <li><strong>Root tree</strong> — see how words grow from the same root,
+  and open any root as an interactive map of its word family.</li>
+  <li><strong>Every occurrence</strong> — each entry can show all the places
+  the word appears in {{ meta.get('corpus_label','the text') }}, not just the
+  first.</li>
+  <li><strong>Elsewhere on the web</strong> — at the bottom of an entry we
+  pull live results from Wiktionary{% if cfg.slug == 'arabic' %} and
+  Wikidata{% endif %} for a second opinion. Those are clearly marked as
+  outside sources: helpful, but not checked by us and not part of this
+  dictionary.</li>
+</ul>
 
 <h2 class="lab">What the badges mean</h2>
+<p>Not every part of an entry has had the same amount of checking yet —
+the coloured badges say exactly where each piece stands:</p>
 {{ confidence_legend() }}
 
-<h2 class="lab">Data sources &amp; licences</h2>
+<h2 class="lab">Where the data comes from</h2>
+<p>In one line: {{ meta.get('sources_label','the sources below') }} provide
+the words; Olam provides the Malayalam drafts; everything is credited in
+full below.</p>
+<details class="credits">
+<summary>Credits, sources &amp; licences — the full detail</summary>
 {% if cfg.slug == 'syriac' %}
 <p><strong>SEDRA III</strong> (roots, lexemes, words, morphology, English
 glosses derived from Payne Smith, and the BFBS Peshitta NT concordance) —
@@ -46,7 +71,9 @@ against the East Syriac ↔ Malayalam convention in Joju Jacob’s slides
 (Dukrana 2024). Values shown carry the <span class="badge b-draft">draft</span>
 badge until then.</p>
 
-<h2 class="lab">Filling the gaps</h2>
+<h2 class="lab">For the project team</h2>
+<p class="muted">Widening the dictionary happens offline, never on this
+site:</p>
 <pre>python compile.py fetch-vocalised   # eastern/western Unicode from SEDRA IV
 python compile.py build --top 300   # widen coverage, rerun anytime</pre>
 {% else %}
@@ -74,15 +101,18 @@ English key that matched.</p>
 for Arabic→Malayalam is not yet assigned (flagged for Dr. Amaldev). Values
 shown carry the <span class="badge b-draft">draft</span> badge until then.</p>
 
-<h2 class="lab">Filling the gaps</h2>
+<h2 class="lab">For the project team</h2>
+<p class="muted">Widening the dictionary happens offline, never on this
+site:</p>
 <pre>python compile_arabic.py build --top 300   # widen coverage, rerun anytime</pre>
 {% endif %}
+</details>
 
-<h2 class="lab">On-screen keyboard</h2>
-<p>The tap-keyboard below the search box on the home page is a reference
-grid generated from the Unicode character database (labels are official
-character names), not a typing convention.
-{% if cfg.slug == 'syriac' %}When the Keyman CDN is reachable, the real
+<h2 class="lab">Typing without a {{ 'Syriac' if cfg.slug == 'syriac' else 'Arabic' }} keyboard</h2>
+<p>Three ways: spell the word out in English letters (or type its English
+meaning, or Malayalam) straight into the search box; tap the letters on the
+home page's on-screen keyboard{% if cfg.slug == 'syriac' %}; or flip the
+switch under that keyboard to make your own PC keyboard type Syriac via the
 <a href="https://keyman.com/keyboards/east_syriac_qwerty">east_syriac_qwerty</a>
-keyboard (MIT) attaches to the search field as well.{% endif %}</p>
+layout — it's off by default, so your keyboard stays English until you ask{% endif %}.</p>
 {% endblock %}
