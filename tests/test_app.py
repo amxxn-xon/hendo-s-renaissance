@@ -142,7 +142,7 @@ def test_wrong_script_input_shows_a_notice_not_a_silent_redirect():
         return
     r = client().get("/syriac/search", query_string={"q": "سلام"})  # Arabic
     assert r.status_code == 200
-    assert b"No Syriac in your search" in r.data
+    assert b"Nothing matched" in r.data and b"Syriac" in r.data
 
 
 def test_lone_vowel_point_does_not_suggest_arbitrary_words():
@@ -403,6 +403,84 @@ def test_ipa_is_compiled_and_rendered():
     assert b"draft" in r.data, "IPA must carry a draft badge (unvetted table)"
 
 
+def test_english_word_miss_wires_the_translations_panel():
+    if not DB_SYR.exists():
+        print("  (skipped: build the Syriac store first)")
+        return
+    # An English word with no compiled match must land on the miss page
+    # with the online panel armed with that word (English mode), not a
+    # silent empty panel. No network here — only the data-query wiring.
+    r = client().get("/syriac/search",
+                     query_string={"q": "zzqx unmatchable"})
+    assert r.status_code == 200
+    assert b'data-query="zzqx unmatchable"' in r.data
+
+
+def test_entry_online_query_uses_the_lemma():
+    if not DB_AR.exists():
+        print("  (skipped: build the Arabic store first)")
+        return
+    import sqlite3
+    con = sqlite3.connect(DB_AR)
+    con.row_factory = sqlite3.Row
+    # An inflected form whose lemma differs (e.g. an article-carrying
+    # surface form): the online panel must query by LEMMA, because
+    # Wiktionary titles pages by citation form.
+    row = con.execute(
+        "SELECT word_id, lemma FROM entries WHERE lemma IS NOT NULL AND "
+        "lemma != '' AND lemma != headword_bare AND is_lexical_form = 0 "
+        "ORDER BY freq DESC LIMIT 1").fetchone()
+    con.close()
+    if row is None:
+        print("  (skipped: no inflected form with distinct lemma)")
+        return
+    r = client().get(f"/arabic/entry/{row['word_id']}")
+    assert r.status_code == 200
+    assert f'data-query="{row["lemma"]}"'.encode() in r.data
+
+
+def test_every_keyboard_letter_is_attested_in_its_store():
+    if not (DB_SYR.exists() and DB_AR.exists()):
+        print("  (skipped: build both stores first)")
+        return
+    import sqlite3
+    # A key that can never match anything is a trap (the old Arabic range
+    # leaked U+063B–063F, Khowar/Farsi-orthography letters — a user tapped
+    # ػ and got nothing, ever). Every letter offered must occur in at
+    # least one stored surface.
+    c = client()
+    for slug, db in (("syriac", DB_SYR), ("arabic", DB_AR)):
+        chars = set()
+        con = sqlite3.connect(db)
+        for (s,) in con.execute("SELECT DISTINCT surface FROM surface_index"):
+            chars.update(s)
+        con.close()
+        kb = c.get(f"/{slug}/keyboard.json").get_json()
+        ghosts = [k for k in kb["letters"] if k["c"] not in chars]
+        assert not ghosts, (slug, [(k["c"], k["n"]) for k in ghosts])
+    # Points rows: Arabic harakat must be attested in the store's vocalised
+    # surfaces. Syriac vowel points can't be attested in a sandbox store
+    # (fetch-vocalised is Ameen's-machine-only), so they're pinned to the
+    # EAST Syriac sign inventory instead — Western ABOVE/BELOW vowel signs
+    # and liturgical marks must not reappear (DECISIONS №40).
+    import unicodedata
+    ar_chars = set()
+    con = sqlite3.connect(DB_AR)
+    for (s,) in con.execute("SELECT headword_eastern FROM entries "
+                            "WHERE headword_eastern IS NOT NULL"):
+        ar_chars.update(s)
+    con.close()
+    kb = c.get("/arabic/keyboard.json").get_json()
+    ghost_pts = [k for k in kb["points"] if k["c"] not in ar_chars]
+    assert not ghost_pts, [(k["c"], k["n"]) for k in ghost_pts]
+    kb = c.get("/syriac/keyboard.json").get_json()
+    east_ok = ("DOTTED", "ZLAMA", "RWAHA", "FEMININE", "QUSHSHAYA",
+               "RUKKAKHA", "DIAERESIS")
+    for k in kb["points"]:
+        name = unicodedata.name(k["c"])
+        assert any(t in name for t in east_ok), name
+
+
 def test_pwa_is_gone():
     # The PWA/offline layer was removed (DECISIONS №34): its routes must
     # 404 rather than half-serve, and ui.js must carry the cleanup that
@@ -445,6 +523,9 @@ TESTS = [
     test_english_digraph_transcription_finds_entries,
     test_english_meaning_search_finds_entries,
     test_translit_query_with_extra_suffix_still_matches,
+    test_english_word_miss_wires_the_translations_panel,
+    test_entry_online_query_uses_the_lemma,
+    test_every_keyboard_letter_is_attested_in_its_store,
     test_ipa_is_compiled_and_rendered,
     test_pwa_is_gone,
     test_unknown_url_is_a_friendly_404,

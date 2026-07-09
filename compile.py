@@ -78,7 +78,8 @@ CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
 
 def cmd_build(args: argparse.Namespace) -> None:
-    from suriyani.backbone import ENTRY_FIELDS, assemble_entries
+    from suriyani.backbone import (CONFIDENCE_BASE, ENTRY_FIELDS,
+                                   PROVENANCE_BASE, assemble_entries)
     from suriyani.sedra3 import BOOK_NAMES
     from suriyani.sedra_api import SEYAME
 
@@ -137,9 +138,16 @@ def cmd_build(args: argparse.Namespace) -> None:
         "sources_label": "SEDRA III and the Peshitta",
         "freq_label": freq_label,
         "stats": json.dumps(stats),
+        # Constant per-field provenance/confidence, stored once; each row
+        # holds only its overrides (see suriyani/backbone.py).
+        "provenance_base": json.dumps(PROVENANCE_BASE, ensure_ascii=False),
+        "confidence_base": json.dumps(CONFIDENCE_BASE),
     }
     con.executemany("INSERT INTO meta VALUES (?,?)", meta.items())
     con.commit()
+    # Reclaim the space DROP TABLE freed: SQLite keeps the file at its
+    # high-water mark otherwise, so a store rebuilt smaller stays huge.
+    con.execute("VACUUM")
     con.close()
 
     print(f"-> {db}")

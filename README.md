@@ -13,19 +13,20 @@ the Arabic port (`arabiyya/`, see ARABIC_PORT.md) has since proven.
 ```bash
 pip install -r requirements.txt                       # runtime: flask, requests, gunicorn
 pip install -r requirements-compile.txt               # compile-only: pymupdf (PDF parsing)
-python3 compile.py build --top 800     # SEDRA III + whole Peshitta NT (+ Lexical
-                                        #   Aids boost, on by default) →
-                                        #   data/dictionary.db; --book 52 = Matthew only
-python3 compile_arabic.py build --top 600   # QAC + camel → data/dictionary_ar.db
+python3 compile.py build --top 100000  # SEDRA III + whole Peshitta NT, every word
+                                        #   form (+ Lexical Aids boost, on by default)
+                                        #   → data/dictionary.db; --book 52 = Matthew only
+python3 compile_arabic.py build --top 100000   # QAC + camel, every word form of the
+                                        #   Qur'an → data/dictionary_ar.db
 python3 app.py                         # → http://127.0.0.1:5000 — both dictionaries,
                                         #   /syriac/ and /arabic/, toggle in the header
 python3 tests/test_core.py             # 9 checks, all doc-anchored
 python3 tests/test_arabic.py           # 6 checks, data-anchored
 python3 tests/test_lexical_aids.py     # 6 checks, data-anchored
-python3 tests/test_app.py              # 25 checks, unified-app (routes, roots, root cards,
+python3 tests/test_app.py              # 28 checks, unified-app (routes, roots, root cards,
                                         #   translit + English + meaning search, lemma
-                                        #   pages, attestations, draft IPA)
-python3 tests/test_online_lookup.py    # 15 checks, fixture-anchored (2 live, skip offline)
+                                        #   pages, attestations, draft IPA, translations)
+python3 tests/test_online_lookup.py    # 20 checks, fixture-anchored (2 live, skip offline)
 ```
 
 One further command matters, and it must run on a normal home/campus

@@ -22,6 +22,9 @@
   --warm: #fbf6ee;   /* the online-sources aside                          */
   --gold: #a8720a;   /* second accent: illumination gold — borders, marks */
   --shadow: rgba(0,0,0,.1);
+  /* root-graph family palette: one hue per dictionary-form group */
+  --fam0: #8a1f1f; --fam1: #3f5d8a; --fam2: #2f6b5e;
+  --fam3: #7a5230; --fam4: #6b3a5d; --fam5: #55651f;
   --syr-stack: "East Syriac Adiabene", "Noto Sans Syriac Eastern",
                "Noto Sans Syriac", "Estrangelo Edessa", serif;
   --ar-stack: "Amiri", "Noto Naskh Arabic", "Noto Sans Arabic", serif;
@@ -285,10 +288,12 @@ mark { background: var(--mark); padding: 0 .12em; border-radius: 2px; }
 .online-item-sum { display: flex; align-items: baseline; gap: .55rem;
   padding: .32rem 0; cursor: pointer; }
 .online-item-sum:hover .online-headword { color: var(--rubric); }
-.online-headword { font-weight: 700; color: var(--ink); }
+.online-headword { font-weight: 700; color: var(--ink); flex-shrink: 0; }
 .online-lang { font-family: var(--ui); font-size: .68rem; color: var(--muted);
   border: 1px solid var(--line); border-radius: 999px; padding: 0 .45rem;
   flex-shrink: 0; }
+.online-hint { color: var(--muted); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
 .online-item-body { padding: .1rem 0 .5rem 1.1rem; }
 .online-gloss-full { margin: 0 0 .3rem; color: var(--ink); }
 .online-open { font-family: var(--ui); font-size: .8rem; font-weight: 600; }
@@ -433,6 +438,29 @@ footer .credit strong { color: var(--rubric); }
 .rg-lemma { background: var(--wash); color: var(--ink);
   border: 2px solid var(--gold); box-shadow: none; }
 .rg-me { outline: 3px solid var(--gold); outline-offset: 3px; }
+/* one hue per dictionary-form family, so groups read as groups */
+.rg-form.rg-c0 { background: var(--fam0); }
+.rg-form.rg-c1 { background: var(--fam1); }
+.rg-form.rg-c2 { background: var(--fam2); }
+.rg-form.rg-c3 { background: var(--fam3); }
+.rg-form.rg-c4 { background: var(--fam4); }
+.rg-form.rg-c5 { background: var(--fam5); }
+.rg-lemma.rg-c0 { border-color: var(--fam0); }
+.rg-lemma.rg-c1 { border-color: var(--fam1); }
+.rg-lemma.rg-c2 { border-color: var(--fam2); }
+.rg-lemma.rg-c3 { border-color: var(--fam3); }
+.rg-lemma.rg-c4 { border-color: var(--fam4); }
+.rg-lemma.rg-c5 { border-color: var(--fam5); }
+.rg-e0 { stroke: var(--fam0); opacity: .45; }
+.rg-e1 { stroke: var(--fam1); opacity: .45; }
+.rg-e2 { stroke: var(--fam2); opacity: .45; }
+.rg-e3 { stroke: var(--fam3); opacity: .45; }
+.rg-e4 { stroke: var(--fam4); opacity: .45; }
+.rg-e5 { stroke: var(--fam5); opacity: .45; }
+/* "+N" overflow bubble: quiet, obviously not a word */
+.rg-more { background: var(--soft); color: var(--ink);
+  border: 1.5px dashed var(--muted); box-shadow: none; }
+.rg-more .rg-hw { font-family: var(--ui); direction: ltr; font-weight: 700; }
 .root-graph-sm { height: 380px; }
 .graph-actions { display: flex; gap: .4rem; margin: .2rem 0 .4rem; }
 .root-graph-wrap:fullscreen { background: var(--paper); padding: 1rem;
@@ -489,6 +517,8 @@ footer .credit strong { color: var(--rubric); }
     --warm: #251f16;
     --gold: #d9a441;
     --shadow: rgba(0,0,0,.55);
+    --fam0: #c96a5c; --fam1: #7fa1d0; --fam2: #6fb3a4;
+    --fam3: #c99a6e; --fam4: #b784a7; --fam5: #a3b25e;
   }
 }
 :root[data-theme="dark"] {
@@ -505,6 +535,8 @@ footer .credit strong { color: var(--rubric); }
   --warm: #251f16;
   --gold: #d9a441;
   --shadow: rgba(0,0,0,.55);
+  --fam0: #c96a5c; --fam1: #7fa1d0; --fam2: #6fb3a4;
+  --fam3: #c99a6e; --fam4: #b784a7; --fam5: #a3b25e;
 }
 
 /* --- print ----------------------------------------------------------------

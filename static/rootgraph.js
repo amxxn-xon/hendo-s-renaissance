@@ -88,7 +88,7 @@
       hw.textContent = hwText;
       hw.style.fontSize = Math.max(12, Math.round(r * 0.42)) + "px";
       el.appendChild(hw);
-      if (subText && r >= 36) {
+      if (subText && (r >= 36 || cls.indexOf("rg-lemma") >= 0)) {
         var gl = document.createElement("span");
         gl.className = "rg-gloss";
         gl.textContent = subText;
@@ -105,30 +105,78 @@
                 home: dist,
                 x: px + Math.cos(angle) * dist,
                 y: py + Math.sin(angle) * dist,
-                ox: 0, oy: 0,          /* anchor offset from parent/centre */
+                /* anchor offset from parent/centre — the initial layout
+                   pass overwrites this for build-time nodes; nodes created
+                   later (hub expansion) keep this ring placement */
+                ox: Math.cos(angle) * dist,
+                oy: Math.sin(angle) * dist,
                 bx: 0, by: 0,          /* current bob offset               */
                 phase: (nodes.length * 2.399) % (2 * Math.PI),
                 dragging: false };
       nodes.push(n);
+      wireNode(n);
       return n;
     }
 
-    var nTop = data.lemmas.length;
-    data.lemmas.forEach(function (L, i) {
-      var angle = (i / nTop) * 2 * Math.PI - Math.PI / 2;
+    // --- render plan: cap what's drawn so big families stay readable -----
+    // The full data always lives in the list below the graph; the picture
+    // shows each dictionary-form hub with its most frequent forms and a
+    // "+N" bubble for the rest, plus the top standalone words. Each hub
+    // family gets its own colour (rg-c0…rg-c5) so groups read as groups.
+    var MAXF = parseInt(box.getAttribute("data-max-forms") || "6", 10);
+    var MAXSOLO = parseInt(box.getAttribute("data-max-solo") || "16", 10);
+    var listHref = box.getAttribute("data-list-href") || "#family-list";
+    var FAMS = 6;
+
+    var plan = [];
+    var soloHidden = 0;
+    var soloCount = 0;
+    data.lemmas.forEach(function (L) {
       if (!L.self && L.forms.length === 1) {
-        var f = L.forms[0];
+        var isMe = highlightId && L.forms[0].word_id === highlightId;
+        if (soloCount < MAXSOLO || isMe) {   // never hide the visitor's word
+          plan.push({ solo: L.forms[0] });
+          soloCount++;
+        } else {
+          soloHidden++;
+        }
+      } else {
+        plan.push({ hub: L });
+      }
+    });
+    if (soloHidden > 0) plan.push({ moreSolo: soloHidden });
+
+    var nTop = plan.length;
+    var famIdx = 0;
+    plan.forEach(function (item, i) {
+      var angle = (i / nTop) * 2 * Math.PI - Math.PI / 2;
+      if (item.solo) {
+        var f = item.solo;
         var r = radius(f.freq || 1);
-        makeNode("rg-form", f.hw, f.gloss, r, null, angle,
-                 center.r + r + 60 + (i % 3) * 22, f);
+        var n = makeNode("rg-form", f.hw, f.gloss, r, null, angle,
+                         center.r + r + 60 + (i % 3) * 22, f);
+        n.line.setAttribute("class", "rg-edge");
         return;
       }
-      var nAround = L.forms.length;
-      var hubR = Math.min(48, 30 + (nAround + 1) * 2);
-      var hub = makeNode("rg-lemma", L.label,
-                         (nAround + (L.self ? 1 : 0)) + " forms", hubR,
-                         null, angle,
-                         center.r + hubR + 95 + (i % 2) * 30, {
+      if (item.moreSolo) {
+        makeNode("rg-more", "+" + item.moreSolo, "more words", 30, null,
+                 angle, center.r + 80, {
+          more: true, url: listHref, hw: "+" + item.moreSolo,
+          gloss: "", pos: "", morph: "", freq: 0,
+        });
+        return;
+      }
+      // Dictionary-form hub — COLLAPSED by default; clicking unfolds its
+      // family (and clicking again folds it back), so even a 259-word
+      // root opens as a calm ring of hubs.
+      var L = item.hub;
+      var fam = "rg-c" + (famIdx % FAMS);
+      famIdx++;
+      var totalForms = L.forms.length + (L.self ? 1 : 0);
+      var hubR = Math.min(48, 32 + totalForms);
+      var hub = makeNode("rg-lemma " + fam, L.label,
+                         totalForms + " forms ▸", hubR, null, angle,
+                         center.r + hubR + 80 + (i % 2) * 26, {
         word_id: L.self ? L.self.word_id : 0,
         hw: L.label, translit: L.self ? L.self.translit : "",
         pos: "dictionary form",
@@ -138,12 +186,70 @@
         open_label: L.self ? "Open the full entry →"
                            : (L.url ? "See all its forms →" : "Open the entry →"),
       });
-      L.forms.forEach(function (f, j) {
-        var r = radius(f.freq || 1);
-        var a2 = angle + ((j + 1) / (nAround + 1) - 0.5) * Math.PI * 1.2;
-        makeNode("rg-form", f.hw, f.gloss, r, hub, a2, hubR + r + 26, f);
-      });
+      hub.line.setAttribute("class", "rg-edge " + fam.replace("rg-c", "rg-e"));
+      hub.L = L;
+      hub.fam = fam;
+      hub.expanded = false;
+      hub.children = [];
+      hub.formsLabel = totalForms + " forms";
+      hub.glossEl = hub.el.querySelector(".rg-gloss");
     });
+
+    // --- hub expansion ------------------------------------------------------
+    function removeNode(n) {
+      var i = nodes.indexOf(n);
+      if (i >= 0) nodes.splice(i, 1);
+      if (n.el.parentNode) n.el.parentNode.removeChild(n.el);
+      if (n.line.parentNode) n.line.parentNode.removeChild(n.line);
+    }
+
+    function collapseHub(hub) {
+      hub.children.forEach(removeNode);
+      hub.children = [];
+      hub.expanded = false;
+      if (hub.glossEl) hub.glossEl.textContent = hub.formsLabel + " ▸";
+    }
+
+    function expandHub(hub) {
+      var L = hub.L;
+      var edgeCls = "rg-edge " + hub.fam.replace("rg-c", "rg-e");
+      var shown = L.forms.slice(0, MAXF);
+      if (highlightId) {                   // never hide the visitor's word
+        for (var k = MAXF; k < L.forms.length; k++) {
+          if (L.forms[k].word_id === highlightId) {
+            shown = shown.slice(0, Math.max(0, MAXF - 1)).concat([L.forms[k]]);
+            break;
+          }
+        }
+      }
+      var hiddenN = L.forms.length - shown.length;
+      var count = shown.length + (hiddenN > 0 ? 1 : 0);
+      shown.forEach(function (f, j) {
+        var r = radius(f.freq || 1);
+        var a2 = (j / count) * 2 * Math.PI - Math.PI / 2;
+        var n = makeNode("rg-form " + hub.fam, f.hw, f.gloss, r, hub, a2,
+                         hub.r + r + 24, f);
+        n.line.setAttribute("class", edgeCls);
+        hub.children.push(n);
+      });
+      if (hiddenN > 0) {
+        var aN = ((count - 1) / count) * 2 * Math.PI - Math.PI / 2;
+        var mn = makeNode("rg-more", "+" + hiddenN, "more", 26, hub, aN,
+                          hub.r + 26 + 20, {
+          more: true, url: L.url || listHref, hw: "+" + hiddenN,
+          gloss: "", pos: "", morph: "", freq: 0,
+        });
+        mn.line.setAttribute("class", edgeCls);
+        hub.children.push(mn);
+      }
+      hub.expanded = true;
+      if (hub.glossEl) hub.glossEl.textContent = hub.formsLabel + " ▾";
+      if (reduced) draw(0);
+    }
+
+    function toggleHub(hub) {
+      if (hub.expanded) collapseHub(hub); else expandHub(hub);
+    }
 
     // --- info panel -----------------------------------------------------------
     function select(n) {
@@ -274,15 +380,25 @@
       })(0);
     }
 
-    // Pre-open the info card for the word the visitor came from.
+    // The word the visitor came from: unfold its hub, ring it, open its
+    // info card — even though hubs start collapsed.
     if (highlightId) {
+      var owner = null;
       for (var h = 0; h < nodes.length; h++) {
-        if (nodes[h].d.word_id === highlightId) { select(nodes[h]); break; }
+        var nh = nodes[h];
+        if (nh.L && nh.L.forms.some(function (f) {
+          return f.word_id === highlightId;
+        })) { owner = nh; break; }
+      }
+      if (owner) expandHub(owner);
+      for (var h2 = 0; h2 < nodes.length; h2++) {
+        if (nodes[h2].d.word_id === highlightId) { select(nodes[h2]); break; }
       }
     }
 
-    // --- drag + click -----------------------------------------------------
-    nodes.forEach(function (n) {
+    // --- drag + click (wireNode is called by makeNode for every node,
+    //     including children created later by hub expansion) --------------
+    function wireNode(n) {
       var moved = false;
       n.el.addEventListener("pointerdown", function (ev) {
         ev.preventDefault();
@@ -306,16 +422,22 @@
           n.ox = n.x - px; n.oy = n.y - py;
         }
         n.dragging = false;
-        if (!moved) select(n);
+        if (!moved) {
+          if (n.d.more) { window.location.href = n.d.url; }
+          else if (n.L) { toggleHub(n); select(n); }
+          else { select(n); }
+        }
         if (reduced) draw(0);
       });
       n.el.addEventListener("keydown", function (ev) {
         if (ev.key === "Enter" || ev.key === " ") {
           ev.preventDefault();
-          select(n);
+          if (n.d.more) { window.location.href = n.d.url; }
+          else if (n.L) { toggleHub(n); select(n); }
+          else { select(n); }
         }
       });
-    });
+    }
 
     // --- keep it fitting on resize -----------------------------------------
     window.addEventListener("resize", function () {

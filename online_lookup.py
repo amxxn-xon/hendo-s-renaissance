@@ -61,26 +61,36 @@ _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 def _get_capped(url: str, params: dict, timeout: float) -> "tuple":
     """GET with a total-bytes cap and no redirect-following. Returns
     (text_decoded_utf8, None) or (None, error_message). Kept in one place
-    so every source inherits the same guards."""
+    so every source inherits the same guards.
+
+    One immediate retry on failure: user reports showed sporadic
+    SSLError/ConnectionError from Wiktionary that succeed on the very next
+    attempt (a dropped TLS handshake, a recycled connection) — retrying
+    once turns most of those into results instead of error banners."""
     if _requests is None:
         return None, _NO_REQUESTS_MSG
-    try:
-        resp = _requests.get(url, params=params,
-                             headers={"User-Agent": _USER_AGENT},
-                             timeout=timeout, stream=True, allow_redirects=False)
-        resp.raise_for_status()
-        chunks, total = [], 0
-        for chunk in resp.iter_content(65536):
-            chunks.append(chunk)
-            total += len(chunk)
-            if total > _MAX_RESPONSE_BYTES:
-                resp.close()
-                return None, "response too large"
-        # These APIs serve UTF-8 JSON; pin it rather than trusting requests'
-        # ISO-8859-1 default for a charset-less content-type.
-        return b"".join(chunks).decode("utf-8", errors="replace"), None
-    except Exception as exc:
-        return None, exc.__class__.__name__
+    last_err = "unknown"
+    for _attempt in (1, 2):
+        try:
+            resp = _requests.get(url, params=params,
+                                 headers={"User-Agent": _USER_AGENT},
+                                 timeout=timeout, stream=True,
+                                 allow_redirects=False)
+            resp.raise_for_status()
+            chunks, total = [], 0
+            for chunk in resp.iter_content(65536):
+                chunks.append(chunk)
+                total += len(chunk)
+                if total > _MAX_RESPONSE_BYTES:
+                    resp.close()
+                    return None, "response too large"
+            # These APIs serve UTF-8 JSON; pin it rather than trusting
+            # requests' ISO-8859-1 default for a charset-less content-type.
+            return b"".join(chunks).decode("utf-8", errors="replace"), None
+        except Exception as exc:
+            last_err = exc.__class__.__name__
+            continue
+    return None, f"{last_err} — a momentary network hiccup; reload to retry"
 
 
 @dataclass(frozen=True)
@@ -204,12 +214,16 @@ def fetch_wiktionary(word: str, lang_candidates: tuple[str, ...],
 
 # --- Wiktionary: related pages (action=query&list=search) -------------------
 
-def parse_wiktionary_search_json(data: dict, query: str,
-                                 limit: int = 8) -> list[OnlineResult]:
-    """Pure parser for a full-text search response. Each hit becomes a
-    linked result whose gloss is the (HTML-stripped) match snippet. The
-    exact page, if it is itself a hit, is dropped — the exact-entry source
-    already covers it, so this stays purely the *wider* net."""
+def parse_mw_search_json(data: dict, query: str, host: str,
+                         drop_exact: bool = False,
+                         limit: int = 8) -> list[OnlineResult]:
+    """Pure parser for a MediaWiki list=search response — the same shape
+    on every Wikimedia wiki, so Wiktionary and the Wikipedias share it.
+    Each hit becomes a linked result whose gloss is the (HTML-stripped)
+    match snippet. `drop_exact` removes the query's own page from the
+    hits: on Wiktionary the exact entry is covered by the dictionary-entry
+    source, so its search stays purely the wider net; on Wikipedia the
+    exact article IS the prize, so it stays."""
     if not isinstance(data, dict):
         return []
     query_block = data.get("query")
@@ -227,32 +241,165 @@ def parse_wiktionary_search_json(data: dict, query: str,
         title = hit.get("title")
         if not isinstance(title, str) or not title:
             continue
-        if title == query:          # the exact entry is covered elsewhere
+        if drop_exact and title == query:
             continue
         snippet = _strip_html(hit.get("snippet", ""))[:200]
         out.append(OnlineResult(
             headword=title, pos="",
             gloss=snippet,
-            url=f"https://en.wiktionary.org/wiki/{quote(title)}"))
+            url=f"https://{host}/wiki/{quote(title)}"))
         if len(out) >= limit:
             break
     return out
 
 
-def fetch_wiktionary_search(word: str,
-                            timeout: float = 6.0) -> tuple[list[OnlineResult], str | None]:
+def _fetch_mw_search(word: str, host: str, site_label: str,
+                     drop_exact: bool,
+                     timeout: float = 6.0) -> tuple[list[OnlineResult], str | None]:
     import json as _json
-    text, err = _get_capped(_WIKT_API, {
+    text, err = _get_capped(f"https://{host}/w/api.php", {
         "action": "query", "list": "search", "srsearch": word,
         "format": "json", "formatversion": 2, "srlimit": 8}, timeout)
     if err is not None:
-        msg = err if err == _NO_REQUESTS_MSG else f"couldn't reach Wiktionary just now ({err})"
+        msg = err if err == _NO_REQUESTS_MSG else f"couldn't reach {site_label} just now ({err})"
         return [], msg
     try:
         data = _json.loads(text)
     except ValueError:
-        return [], "Wiktionary returned an unreadable response"
-    return parse_wiktionary_search_json(data, word), None
+        return [], f"{site_label} returned an unreadable response"
+    return parse_mw_search_json(data, word, host, drop_exact=drop_exact), None
+
+
+def fetch_wiktionary_search(word: str,
+                            timeout: float = 6.0) -> tuple[list[OnlineResult], str | None]:
+    return _fetch_mw_search(word, "en.wiktionary.org", "Wiktionary",
+                            drop_exact=True, timeout=timeout)
+
+
+def fetch_wikipedia_search(word: str, host: str,
+                           timeout: float = 6.0) -> tuple[list[OnlineResult], str | None]:
+    """Encyclopedia hits from the language's own Wikipedia — Arabic
+    Wikipedia for the Arabic dictionary, Aramaic Wikipedia (arc, written
+    in Syriac script) for the Syriac one. Both verified live 2026-07-09;
+    same MediaWiki search API as Wiktionary."""
+    return _fetch_mw_search(word, host, "Wikipedia",
+                            drop_exact=False, timeout=timeout)
+
+
+# --- Wiktionary: English word -> target-language translations ----------------
+
+# Both {{trans-top|SENSE}} and {{trans-top-see|SENSE|target}} open a
+# translation block — the -see variant often still carries inline entries
+# (verified on the house/translations fixture, where the Arabic بيت line
+# sits under a trans-top-see block).
+_TRANS_TOP_RE = re.compile(r"\{\{trans-top(?:-see)?(?:\|id=[^|}]*)?\|([^}|]*)")
+# {{t|...}} / {{t+|...}} on normal pages; {{tt|...}} / {{tt+|...}} on
+# /translations subpages (both shapes verified against saved fixtures).
+_T_TEMPLATE_RE = re.compile(r"\{\{tt?\+?\|([a-z-]+)\|([^|}]+)")
+_TRANS_SUBPAGE_RE = re.compile(r"\{\{see translation subpage\|")
+
+#: Language names for the translation codes we accept — shown as the
+#: result's chip so an Assyrian Neo-Aramaic word can never pass as
+#: Classical Syriac (same honesty rule as the entry-section parser).
+_TRANS_LANG_NAMES = {
+    "ar": "Arabic", "syc": "Classical Syriac",
+    "aii": "Assyrian Neo-Aramaic", "tru": "Turoyo",
+}
+
+
+def parse_wiktionary_translations_json(data: dict, codes: tuple[str, ...],
+                                       english_word: str,
+                                       limit: int = 10) -> list[OnlineResult]:
+    """Pure parser: from the ENGLISH Wiktionary page of an English word
+    ("flower"), pull the translation entries whose {{t|CODE|…}} language
+    code is one of `codes` (ar / syc). Each hit keeps the sense line from
+    its {{trans-top|…}} block ("a colorful, conspicuous structure …"), so
+    a word translating a different sense of the same English headword is
+    distinguishable. Words come out verbatim from the page — never
+    synthesized — and are labelled as Wiktionary content in the UI."""
+    if not isinstance(data, dict) or "error" in data:
+        return []
+    parse = data.get("parse")
+    if not isinstance(parse, dict):
+        return []
+    wikitext = parse.get("wikitext")
+    if not isinstance(wikitext, str):
+        return []
+
+    # Only the ==English== section carries the translations of the English
+    # word (the same page may hold other languages' entries below).
+    m = re.search(r"(?m)^==English==\s*$", wikitext)
+    if not m:
+        return []
+    rest = wikitext[m.end():]
+    nxt = re.search(r"(?m)^==[^=]", rest)
+    section = rest[:nxt.start()] if nxt else rest
+
+    wanted = set(codes)
+    out: list[OnlineResult] = []
+    seen: set[str] = set()
+    from urllib.parse import quote
+    # Walk trans-top blocks in order; attribute each {{t|..}} inside the
+    # block to that block's sense line.
+    blocks = list(_TRANS_TOP_RE.finditer(section))
+    for i, b in enumerate(blocks):
+        end = blocks[i + 1].start() if i + 1 < len(blocks) else len(section)
+        sense = _clean_wikitext(b.group(1)).strip()
+        for t in _T_TEMPLATE_RE.finditer(section[b.end():end]):
+            code, word = t.group(1), t.group(2).strip()
+            if code not in wanted or not word or word in seen:
+                continue
+            seen.add(word)
+            out.append(OnlineResult(
+                headword=word,
+                pos=_TRANS_LANG_NAMES.get(code, code),
+                gloss=(f"“{english_word}” — {sense}" if sense
+                       else f"a translation of “{english_word}”"),
+                url=f"https://en.wiktionary.org/wiki/{quote(word)}"))
+            if len(out) >= limit:
+                return out
+    return out
+
+
+def fetch_wiktionary_translations(english_word: str, codes: tuple[str, ...],
+                                  timeout: float = 6.0
+                                  ) -> tuple[list[OnlineResult], str | None]:
+    """Big English entries ("house") park their translation tables on a
+    /translations subpage behind {{see translation subpage|…}} — when the
+    main page yields nothing but carries that marker, one follow-up fetch
+    of the subpage is made (and only one)."""
+    import json as _json
+
+    def get_parsed(page: str):
+        text, err = _get_capped(_WIKT_API, {
+            "action": "parse", "page": page, "format": "json",
+            "formatversion": 2, "prop": "wikitext"}, timeout)
+        if err is not None:
+            msg = (err if err == _NO_REQUESTS_MSG
+                   else f"couldn't reach Wiktionary just now ({err})")
+            return None, msg
+        try:
+            return _json.loads(text), None
+        except ValueError:
+            return None, "Wiktionary returned an unreadable response"
+
+    data, err = get_parsed(english_word)
+    if data is None:
+        return [], err
+    results = parse_wiktionary_translations_json(data, codes, english_word)
+    wikitext = (data.get("parse") or {}).get("wikitext") or ""
+    if isinstance(wikitext, str) and _TRANS_SUBPAGE_RE.search(wikitext):
+        # The subpage usually carries the PRIMARY senses (the main page
+        # keeps only a stray inline table), so merge rather than fall back
+        # — subpage first, de-duplicated by word.
+        sub, _suberr = get_parsed(f"{english_word}/translations")
+        if sub is not None:
+            sub_results = parse_wiktionary_translations_json(
+                sub, codes, english_word)
+            seen = {r.headword for r in sub_results}
+            results = sub_results + [r for r in results
+                                     if r.headword not in seen]
+    return results[:10], None
 
 
 # --- Wikidata lexemes (wbsearchentities&type=lexeme) ------------------------
@@ -342,6 +489,9 @@ def _sources_for(cfg, query: str) -> "list[tuple[str, str, object]]":
         "wiktionary_search": (
             "Wiktionary — related pages",
             lambda: fetch_wiktionary_search(query)),
+        "wikipedia": (
+            cfg.wikipedia_label,
+            lambda: fetch_wikipedia_search(query, cfg.wikipedia_host)),
         "wikidata": (
             "Wikidata — lexemes",
             lambda: fetch_wikidata_lexemes(query, cfg.wikidata_lang_labels)),
@@ -352,6 +502,23 @@ def _sources_for(cfg, query: str) -> "list[tuple[str, str, object]]":
             label, fn = catalogue[sid]
             ordered.append((sid, label, fn))
     return ordered
+
+
+def lookup_online_english(cfg, english_word: str) -> dict:
+    """English-word mode: the visitor typed plain English ("flower") that
+    matched nothing compiled — ask the English Wiktionary page for its
+    translations into this dictionary's language. Same shape as
+    lookup_online() so online.js renders it unchanged."""
+    lang_name = "Syriac" if cfg.script == "syriac" else "Arabic"
+    results, error = _run_source(
+        lambda: fetch_wiktionary_translations(english_word,
+                                              cfg.translation_codes))
+    return {"query": english_word, "sources": [{
+        "id": "wiktionary_translations",
+        "label": f"Wiktionary — “{english_word}” in {lang_name}",
+        "results": [asdict(r) for r in results],
+        "error": error,
+    }]}
 
 
 def lookup_online(cfg, query: str) -> dict:

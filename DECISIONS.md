@@ -692,3 +692,143 @@ dagger-alif length) so the vetting session addresses precisely what
 users notice. test_app 23→25 (meaning search; suffix-tolerant translit;
 one assertion updated for the new candidates wording). All five suites
 green (9/6/25/6/15).
+
+**38. Everyday-word support: full-corpus stores, delta provenance,
+English→target translations, lemma-keyed web lookups** *(2026-07-09)* —
+Ameen: "support words a regular user might type — hello, flower, house;
+add more examples from the web; some entries' Wiktionary panel is empty."
+
+*(a) Full corpora compiled.* Both stores now hold EVERY distinct word
+form: Syriac 2,198→**19,421** entries (whole Peshitta NT + Lexical Aids),
+Arabic 1,500→**19,886** (whole Qur'an). Same vendored sources, no licence
+change. Two data quirks surfaced and were handled honestly: one
+WORDS.TXT record ("B'Ra_T,;") writes a linea mark after the vowel — the
+tokenizer/regex now folds trailing marks into the token instead of
+crashing on the file as shipped; and test_core's "guaranteed miss"
+example ܦܝܠܣܘܦܐ (philosopher) became a real entry, so the test now
+constructs a verified-absent junk probe instead.
+
+*(b) Size discipline.* The naive full build hit 80+94 MB. Fixes, in
+order of impact: per-entry provenance/confidence now store only
+OVERRIDES with the constant baseline written once into meta
+(provenance_base/confidence_base; merged back in entry_vm and
+export_dictpress — repeating ~1 KB of identical JSON per row was a third
+of the file); attestations capped at 8 shown verses with the true total
+kept, and dropped entirely when they'd only duplicate the single example
+verse; VACUUM after build (SQLite never shrinks a file on its own).
+Result: 26 MB + 45 MB.
+
+*(c) Speed at 20k rows.* The Latin/Malayalam/meaning scans cost
+300–500 ms per keystroke on the full stores. A module-level scan index
+(folded transliterations + gloss word-sets per store file, invalidated
+by mtime) brings them to 23–46 ms. Displayed data is still re-SELECTed
+by word_id; the cache holds comparison forms only.
+
+*(d) English → Arabic/Syriac translations (the "hello, flower" ask).*
+New online source: the ENGLISH Wiktionary page's Translations tables,
+parsed for {{t|ar|…}}/{{tt|syc|…}}-style entries ("flower" → زَهْرَة;
+"hello" → ܫܠܵܡܵܐ). Big pages that park translations on a /translations
+subpage behind {{see translation subpage}} get ONE follow-up fetch,
+merged (that's where house→بَيْت lives, under a {{trans-top-see}} block —
+both template shapes and the block attribution are fixture-tested).
+Syriac accepts syc/aii/tru codes, each result labelled with its own
+language name (syc translations are near-absent on en.wiktionary —
+verified — so Assyrian Neo-Aramaic/Turoyo carry most hits, honestly
+labelled). online.json grew an English mode (no in-script text but
+Latin letters → translations lookup); the miss/empty pages pass the
+English word through, and the wrong-script page now points readers to
+the panel. Still №28-shaped: live, display-only, never stored.
+
+*(e) Empty Wiktionary panels fixed.* Entry pages queried the SURFACE
+form — an article/inflection-carrying title (ٱلْكِتَٰبَ) has no Wiktionary
+page while the lemma (كتاب) does. Entry renders now query by lemma,
+falling back to the bare headword. Homepage/About coverage lines now
+say "covers every word of the corpus" when that's true instead of
+"top 100000". test_app 25→27, test_online_lookup 15→19; all five suites
+green (9/6/27/6/19).
+
+**39. Readable big-family graphs, vetted keyboards, resilient fetches**
+*(2026-07-09)* — Ameen's screenshots showed the full-corpus root graphs
+as a wall of identical red bubbles (أمن alone has 259 compiled words),
+plus a Wiktionary SSLError banner and a dead on-screen-keyboard key (ػ).
+
+*(a) Graphs: cap, group, colour.* The graph now draws a render PLAN, not
+everything: each dictionary-form hub shows its most frequent forms
+(8 on root cards, 6 on entry embeds) with a dashed "+N" bubble linking
+to the complete list/paradigm; standalone words cap at 20/14 with their
+own "+N more words" bubble to the list anchor. Each hub family gets its
+own hue (--fam0…--fam5, light+dark pairs), so groups read as groups —
+أمن went from 259+ bubbles to ~33. The visitor's own word is never
+capped away (promoted into the visible set, gold ring intact). The full
+data still lives in the grouped list below — only the picture is
+selective, and it says so.
+
+*(b) Keyboard vetting — Ameen's ػ report, root-caused.* The Arabic
+tap-keyboard was built from a raw U+0621–U+064A sweep, which includes
+U+063B–U+063F: Keheh/Farsi-Yeh orthography letters for OTHER languages
+(Khowar etc.) that never occur in Arabic — a key that could never match
+anything. The builder now uses two vetted ranges (hamza…ghain,
+feh…yeh, + alef wasla), and a new test pins EVERY key on both keyboards
+to a character attested in that store's surface index, so a ghost key
+can't return. (The right fix was removing the non-Arabic key, not
+"populating" a letter Arabic doesn't use.) The Syriac keyboard audited
+clean — all 22 consonants attested.
+
+*(c) Network resilience.* _get_capped retries once on any fetch
+exception — the reported SSLError is a dropped TLS handshake that
+succeeds on the next attempt — and the failure message now says it's
+momentary. test_app 27→28; all five suites green (9/6/28/6/19).
+
+**40. Complete keyboard character audit; fold-to-explore root graphs**
+*(2026-07-09)* — Ameen: verify EVERY key on both keyboards belongs to
+the language; overhaul the still-busy graphs into click-to-expand.
+
+*(a) Audit results (every key, letters AND points, checked against
+Unicode identity + store attestation).* Arabic: fully clean after №39 —
+all letters and all harakat attested in the store's vocalised surfaces.
+Syriac letters: all 22 attested. Syriac POINTS: every sign is genuinely
+Syriac by Unicode name, but the row mixed the WESTERN vowel signs
+(PTHAHA/ZQAPHA/RBASA/HBASA/ESASA ABOVE/BELOW) and liturgical marks
+(MUSIC, BARREKH) into a Madnhāyā dictionary's keyboard — the same
+foreign-to-this-script problem as the Khowar letters. The row is now the
+East Syriac sign inventory per Unicode's own naming taxonomy (the DOTTED
+vowel signs + ZLAMA pair + RWAHA, plus qushshaya/rukkakha/feminine
+dot/seyame): 28 points → 10. Flagged VERIFY for Joju's slides — and
+consonantal matching strips typed points anyway, so search never
+depended on them. The keyboard test now also pins Arabic points to
+attested characters and Syriac points to the East-set names, so neither
+Western signs nor ghost keys can reappear. (Local attestation of Syriac
+points is impossible in a sandbox store — fetch-vocalised is
+Ameen's-machine-only — hence the name-based pin.)
+
+*(b) Graphs: fold to explore.* Dictionary-form hubs now start COLLAPSED
+— a root opens as a calm ring of labelled hubs ("N forms ▸") plus the
+top standalone words; clicking a hub unfolds its family (capped, with
+the dashed "+N" for the rest; its own colour; "▾" while open) and
+clicking again folds it. The visitor's own word still auto-unfolds its
+hub, gold-ringed, info card open. أمن: 259 bubbles → 7 by default.
+Implementation: nodes are wired at creation (wireNode), so
+expansion-created bubbles get the same drag/click/keyboard behaviour;
+removal splices the physics list. All five suites green (9/6/28/6/19).
+
+**41. Meanings on the summary line; Wikipedia as a second live source**
+*(2026-07-09)* — Ameen: the online panel's collapsed rows showed only
+the word (no meaning until expanded); add another source that serves
+both dictionaries; suggested optionally wiring a small HF LLM.
+(a) Each result's summary line now carries a one-line clipped meaning
+(full text + outward link still behind the expand) — a row should tell
+you whether it's worth opening.
+(b) New source: **each language's own Wikipedia** — ar.wikipedia for
+Arabic and arc.wikipedia (the Aramaic Wikipedia, written in Syriac
+script) for Syriac; both verified live 2026-07-09 (arc has real articles
+for ܡܠܟܐ/ܫܠܡܐ; snippets arrive as definition-like first sentences). The
+MediaWiki list=search parser is now shared (parse_mw_search_json) with a
+per-use `drop_exact` switch: Wiktionary's search stays the wider net
+(exact page covered by the entry source), Wikipedia keeps the exact
+article — it IS the prize. Fixture-tested; the orchestration test
+monkeypatches the new fetcher like the rest. test_online_lookup 19→20.
+(c) The LLM suggestion was consciously declined: rule #3/#4 exclude any
+generator between a keystroke and a result — that guarantee is what
+makes the dictionary citable, and every current source is quotable,
+linkable, human-written material. Logged here so the decision is on the
+record rather than silently skipped.

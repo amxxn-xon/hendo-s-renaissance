@@ -44,6 +44,14 @@
         var isum = el("summary", "online-item-sum");
         isum.appendChild(el("span", "online-headword", r.headword));
         if (r.pos) isum.appendChild(el("span", "online-lang", r.pos));
+        if (r.gloss) {
+          // The meaning belongs on the summary line, clipped to one line —
+          // expanding is for the full text and the outward link, not for
+          // discovering whether the row is worth expanding.
+          var hint = el("span", "online-hint", r.gloss);
+          hint.title = r.gloss;
+          isum.appendChild(hint);
+        }
         item.appendChild(isum);
         var body = el("div", "online-item-body");
         if (r.gloss) body.appendChild(el("p", "online-gloss-full", r.gloss));

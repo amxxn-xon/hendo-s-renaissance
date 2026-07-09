@@ -83,8 +83,13 @@ def _close_dbs(_exc) -> None:
 
 # --- view-model helpers ------------------------------------------------------
 
-def entry_vm(row: sqlite3.Row) -> dict:
+def entry_vm(row: sqlite3.Row, meta: dict) -> dict:
     """Row → template-friendly dict (all JSON fields decoded here, not in Jinja).
+
+    Provenance/confidence rows hold only per-entry OVERRIDES; the constant
+    baseline lives once in the store's meta (provenance_base /
+    confidence_base — repeating it per row was a third of the file). The
+    merge happens here so templates always see the full picture.
 
     Note: `provenance` values are usually plain strings, but the Arabic
     backbone stores gloss_en's provenance as a nested dict when the gloss
@@ -95,8 +100,10 @@ def entry_vm(row: sqlite3.Row) -> dict:
     e["morphology"] = json.loads(e["morphology"] or "{}")
     e["gloss_ml"] = json.loads(e["gloss_ml"] or "[]")
     e["translit_flags"] = json.loads(e["translit_flags"] or "[]")
-    e["provenance"] = json.loads(e["provenance"] or "{}")
-    e["confidence"] = json.loads(e["confidence"] or "{}")
+    e["provenance"] = {**json.loads(meta.get("provenance_base", "{}")),
+                       **json.loads(e["provenance"] or "{}")}
+    e["confidence"] = {**json.loads(meta.get("confidence_base", "{}")),
+                       **json.loads(e["confidence"] or "{}")}
     if e["example_text"]:
         e["example_tokens"] = e["example_text"].split(" ")
         e["example_hl"] = set(json.loads(e["example_hl"] or "[]"))
@@ -169,7 +176,7 @@ def create_dict_blueprint(cfg: DictConfig) -> Blueprint:
         n_lemmas = db().execute(
             "SELECT COUNT(DISTINCT lemma) FROM entries "
             "WHERE lemma IS NOT NULL AND lemma != ''").fetchone()[0]
-        samples = [entry_vm(r) for r in db().execute(
+        samples = [entry_vm(r, meta) for r in db().execute(
             f"SELECT * FROM entries WHERE {_CONTENT_POS_WHERE} "
             "ORDER BY freq DESC LIMIT 12")]
         # Word of the day: a date-seeded pick among the compiled content
@@ -184,7 +191,7 @@ def create_dict_blueprint(cfg: DictConfig) -> Blueprint:
             row = db().execute(
                 f"SELECT * FROM entries WHERE {_CONTENT_POS_WHERE} "
                 "ORDER BY word_id LIMIT 1 OFFSET ?", (offset,)).fetchone()
-            wotd = entry_vm(row) if row else None
+            wotd = entry_vm(row, meta) if row else None
         resp = make_response(render_template(
             "index.html", samples=samples, meta=meta, cfg=cfg, total=total,
             n_roots=n_roots, n_lemmas=n_lemmas, wotd=wotd))
@@ -226,38 +233,44 @@ def create_dict_blueprint(cfg: DictConfig) -> Blueprint:
         q = request.args.get("q", "")
         res = resolve(db(), q)
         meta = _meta(db())
+        # When the query carried no script text (an English word), the
+        # online panel can still earn its keep: online.json's English mode
+        # asks Wiktionary for translations of that word. Letters only,
+        # bounded — display/query hygiene, nothing stored.
+        english_q = "".join(
+            ch for ch in q if ch.isascii() and (ch.isalpha() or ch == " ")
+        ).strip()[:40]
         if res.kind == "empty":
-            # Distinguish a genuinely blank box (bounce home, as before)
-            # from input that had content but nothing in this dictionary's
-            # script survived — e.g. an Arabic word pasted into the Syriac
-            # dictionary, or romanised "shlama". Show the miss page with a
-            # note instead of silently redirecting, so the user isn't left
-            # wondering why the page just reloaded.
+            # Input that had content but nothing this dictionary could use
+            # — wrong-script paste, or an English word with no compiled
+            # match. Show the miss page (with live translations below when
+            # it was English) instead of silently redirecting.
             if q.strip():
                 script_name = "Syriac" if cfg.script == "syriac" else "Arabic"
                 return render_template(
                     "miss.html", searched=res.norm, suggestions=[],
-                    meta=meta, cfg=cfg, online_query="",
+                    meta=meta, cfg=cfg, online_query=english_q,
                     wrong_script=script_name)
             return redirect(url_for(".index"))
         if res.kind == "entry":
-            e = entry_vm(res.entries[0])
+            e = entry_vm(res.entries[0], meta)
             rank, form_count = _entry_extras(db(), e)
             fam = _family(e["root_id"]) if e["root_id"] else None
             return render_template("entry.html", e=e,
                                    searched=res.norm, matched_on=res.matched_on,
-                                   meta=meta, cfg=cfg, online_query=res.norm.bare,
+                                   meta=meta, cfg=cfg,
+                                   online_query=e["lemma"] or e["headword_bare"],
                                    freq_rank=rank, form_count=form_count,
                                    root_graph=fam[2] if fam else None)
         if res.kind == "candidates":
             return render_template("candidates.html",
-                                   entries=[entry_vm(r) for r in res.entries],
+                                   entries=[entry_vm(r, meta) for r in res.entries],
                                    searched=res.norm, matched_on=res.matched_on,
                                    meta=meta, cfg=cfg,
-                                   online_query=res.norm.bare)
+                                   online_query=res.norm.bare or english_q)
         return render_template("miss.html", searched=res.norm,
                                suggestions=res.suggestions, meta=meta, cfg=cfg,
-                               online_query=res.norm.bare)
+                               online_query=res.norm.bare or english_q)
 
     @bp.get("/suggest.json")
     def suggest_json():
@@ -266,12 +279,21 @@ def create_dict_blueprint(cfg: DictConfig) -> Blueprint:
 
     @bp.get("/online.json")
     def online_json():
-        """Live CAL/Wiktionary lookup — never touches db(), by construction.
-        See online_lookup.py and DECISIONS.md №28."""
-        norm = normalise(request.args.get("q", ""), script=cfg.script)
-        if not norm.bare:
-            return jsonify({"query": "", "sources": {}})
-        return jsonify(online_lookup.lookup_online(cfg, norm.bare))
+        """Live Wiktionary/Wikidata lookup — never touches db(), by
+        construction. See online_lookup.py and DECISIONS.md №28/№38.
+        Two modes: a query in the dictionary's own script asks the usual
+        sources; a plain-English query asks the English Wiktionary page
+        for translations into this dictionary's language."""
+        q = request.args.get("q", "")
+        norm = normalise(q, script=cfg.script)
+        if norm.bare:
+            return jsonify(online_lookup.lookup_online(cfg, norm.bare))
+        english = "".join(ch for ch in q
+                          if ch.isascii() and (ch.isalpha() or ch == " ")
+                          ).strip().lower()[:40]
+        if english:
+            return jsonify(online_lookup.lookup_online_english(cfg, english))
+        return jsonify({"query": "", "sources": []})
 
     @bp.get("/browse")
     def browse():
@@ -415,7 +437,8 @@ def create_dict_blueprint(cfg: DictConfig) -> Blueprint:
             "ORDER BY is_lexical_form DESC, freq DESC", (lexeme_id,)).fetchall()
         if not rows:
             abort(404)
-        forms = [entry_vm(r) for r in rows]
+        meta = _meta(db())
+        forms = [entry_vm(r, meta) for r in rows]
         citation = next((f for f in forms if f["is_lexical_form"]), forms[0])
         return render_template("lemma.html", forms=forms, citation=citation,
                                lexeme_id=lexeme_id, meta=_meta(db()), cfg=cfg)
@@ -426,18 +449,26 @@ def create_dict_blueprint(cfg: DictConfig) -> Blueprint:
                            (word_id,)).fetchone()
         if row is None:
             abort(404)
-        e = entry_vm(row)
+        meta = _meta(db())
+        e = entry_vm(row, meta)
         rank, form_count = _entry_extras(db(), e)
         fam = _family(e["root_id"]) if e["root_id"] else None
         return render_template("entry.html", e=e, searched=None,
                                matched_on=None, meta=_meta(db()), cfg=cfg,
-                               online_query=e["headword_bare"], freq_rank=rank,
+                               # Query the web by LEMMA: Wiktionary titles
+                               # its pages by citation form, so an
+                               # article/inflection-carrying surface form
+                               # (ٱلْكِتَٰبَ) found nothing while كتاب exists.
+                               online_query=e["lemma"] or e["headword_bare"],
+                               freq_rank=rank,
                                form_count=form_count,
                                root_graph=fam[2] if fam else None)
 
     @bp.get("/about")
     def about():
-        return render_template("about.html", meta=_meta(db()), cfg=cfg)
+        total = db().execute("SELECT COUNT(*) FROM entries").fetchone()[0]
+        return render_template("about.html", meta=_meta(db()), cfg=cfg,
+                               total=total)
 
     @bp.get("/misses")
     def misses():

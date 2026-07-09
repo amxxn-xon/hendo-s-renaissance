@@ -157,6 +157,12 @@ def tokenize_vocalised(vocalised: str) -> list[str]:
                 j += 1
             if j < n and vocalised[j] in SEDRA3_VOWELS:
                 j += 1
+                # WORDS.TXT writes a mark AFTER the vowel in one real record
+                # ("B'Ra_T,;" — linea following 'a'); fold trailing marks
+                # into the same token rather than crashing on the file as
+                # shipped. Order normalisation only, no linguistic content.
+                while j < n and vocalised[j] in "',_":
+                    j += 1
             tokens.append(vocalised[i:j])
             i = j
         elif ch in SEDRA3_VOWELS or ch in "*-":

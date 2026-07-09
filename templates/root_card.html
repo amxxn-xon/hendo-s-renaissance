@@ -12,20 +12,22 @@
   </div>
 
   <p class="muted rootcard-lede">Words that grow from the same root usually
-  share a core meaning. Outlined bubbles are dictionary forms; filled ones
-  are the shapes they actually take in the text — bigger means more
-  frequent. Drag them around, or click one for details.</p>
+  share a core meaning. Each outlined circle is one dictionary form —
+  <strong>click it to unfold its family</strong> (click again to fold);
+  each family keeps its own colour, bigger means more frequent, and a
+  dashed “+N” holds the rest. Drag anything around.</p>
   <p class="graph-actions">
     <button type="button" class="pill graph-fs">⛶ Full screen</button>
   </p>
 
   <div class="root-graph-wrap">
-    <div id="root-graph" class="root-graph" data-font-class="{{ cfg.font_class }}"></div>
+    <div id="root-graph" class="root-graph" data-font-class="{{ cfg.font_class }}"
+         data-max-forms="8" data-max-solo="20" data-list-href="#family-list"></div>
     <aside id="root-info" class="root-info" hidden></aside>
   </div>
   <script id="graph-data" type="application/json">{{ graph|tojson }}</script>
 
-  <section>
+  <section id="family-list">
     <h2 class="lab">The same family, as a list</h2>
     {% for g in groups %}
     <div class="lemma-group">

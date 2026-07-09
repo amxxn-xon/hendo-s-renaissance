@@ -85,6 +85,10 @@ _CONFIDENCE = {
     "example": "source",
 }
 
+#: Written once into store meta by compile_arabic.py; rows carry overrides.
+PROVENANCE_BASE = _PROVENANCE
+CONFIDENCE_BASE = _CONFIDENCE
+
 
 def _morphology(t: WordToken) -> tuple[dict, str]:
     """Word token → (morphology dict, one-line summary)."""
@@ -202,10 +206,14 @@ def assemble_entries(repo_root: Path, top_n: int) -> tuple[list[dict], dict]:
             stats["translit_gaps"] += 1
 
         example = corpus.example_for(sig)
-        attestations = corpus.attestations_for(sig)
+        attestations = corpus.attestations_for(sig, limit=8)  # size: see suriyani/backbone.py
+        if attestations["total"] <= 1:
+            attestations = {"total": attestations["total"], "shown": []}
         lexical = is_citation(t, lem)
 
-        prov = dict(_PROVENANCE)
+        # Overrides only — the constant baseline lives once in meta
+        # (provenance_base / confidence_base; see suriyani/backbone.py).
+        prov: dict = {}
         if gloss_prov:
             prov["gloss_en"] = {"source": _PROVENANCE["gloss_en"],
                                 "matches": gloss_prov}
@@ -244,7 +252,7 @@ def assemble_entries(repo_root: Path, top_n: int) -> tuple[list[dict], dict]:
             "lemma_link_word_id":
                 citation_of.get(lemma_ids[lem]) if (lem and not lexical) else None,
             "provenance": json.dumps(prov, ensure_ascii=False),
-            "confidence": json.dumps(_CONFIDENCE),
+            "confidence": "{}",   # no per-entry overrides; base lives in meta
         })
         stats["entries"] += 1
         stats["with_gloss_en"] += bool(gloss_en)

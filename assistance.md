@@ -108,13 +108,14 @@ this repo). Do not suggest scope expansions casually.
 ## Commands
 
 ```
-python3 compile.py build --top 800          # Syriac store — whole Peshitta NT by
-                                             #   default (№34); --book 52 for the old
-                                             #   Matthew-only scope. Lexical Aids boost
-                                             #   on by default — --no-lexical-aids to
-                                             #   skip, see DECISIONS №27
+python3 compile.py build --top 100000       # Syriac store — the whole Peshitta NT,
+                                             #   every word form (№38); --book 52 for
+                                             #   the old Matthew-only scope. Lexical
+                                             #   Aids boost on by default —
+                                             #   --no-lexical-aids to skip (№27)
 python3 compile.py fetch-vocalised          # SEDRA IV → Madnhāyā (Ameen's machine only)
-python3 compile_arabic.py build --top 600   # Arabic store (no fetch step — by design)
+python3 compile_arabic.py build --top 100000  # Arabic store — every word form of the
+                                             #   Qur'an (no fetch step — by design)
 python3 app.py                              # :5000 — both dictionaries, /syriac/ and
                                              #   /arabic/, toggle in the header
 python3 tests/test_core.py                  # must stay 9/9
@@ -122,10 +123,11 @@ python3 tests/test_arabic.py                # must stay 6/6
 python3 tests/test_app.py                   # unified-app: routes, roots, root cards,
                                              #   translit + English-digraph + meaning
                                              #   search, lemma pages, attestations,
-                                             #   draft IPA — 25/25
+                                             #   draft IPA, translations panel,
+                                             #   keyboard vetting — 28/28
 python3 tests/test_lexical_aids.py          # Lexical Aids coverage boost, must stay 6/6
-python3 tests/test_online_lookup.py         # Wiktionary/Wikidata panel, 15/15
-                                             #   (2 live tests skip offline)
+python3 tests/test_online_lookup.py         # Wiktionary/Wikipedia/Wikidata panel,
+                                             #   20/20 (2 live tests skip offline)
 python3 export_dictpress.py [db] [out.csv]  # language read from store meta
 ```
 

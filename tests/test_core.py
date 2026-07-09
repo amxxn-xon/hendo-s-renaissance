@@ -134,7 +134,16 @@ def test_lookup_paths() -> None:
     freqs = [e["freq"] for e in r.entries]
     assert freqs == sorted(freqs, reverse=True), "candidates must rank by frequency"
 
+    # ܦܝܠܣܘܦܐ ("philosopher") was this test's guaranteed miss while the
+    # store was Matthew-only; the whole-NT compile (DECISIONS №38) made it
+    # a real entry. Miss-testing now uses a junk skeleton, verified absent
+    # from the surface index first, so the test can't rot the same way.
     r = resolve(con, "ܦܝܠܣܘܦܐ", log_misses=False)
+    assert r.kind in ("entry", "candidates"), "full-NT store should carry it"
+    junk = "ܦ" * 6
+    assert not con.execute("SELECT 1 FROM surface_index WHERE surface = ?",
+                           (junk,)).fetchone(), "junk probe must stay absent"
+    r = resolve(con, junk, log_misses=False)
     assert r.kind == "miss"
 
     after = con.execute("SELECT COUNT(*) FROM misses").fetchone()[0]

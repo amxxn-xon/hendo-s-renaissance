@@ -15,13 +15,18 @@
     <span class="stat"><b>{{ n_lemmas }}</b> lemmas</span>
     <a class="stat stat-go" href="{{ url_for('.random_entry') }}">Random entry →</a>
   </div>
-  <p class="coverage muted">Covers the
-  <strong>{{ meta.get('top_n','?') }}</strong> most frequent words of
-  <em>{{ meta.get('corpus_label', 'the corpus') }}</em>
+  <p class="coverage muted">
+  {%- if meta.get('top_n','0')|int > total|int -%}
+  Covers <strong>every word</strong> of {{ meta.get('corpus_label', 'the corpus') }}
+  — all <strong>{{ total }}</strong> distinct word forms.
+  {%- else -%}
+  Covers the <strong>{{ meta.get('top_n','?') }}</strong> most frequent words
+  of <em>{{ meta.get('corpus_label', 'the corpus') }}</em>
   {%- if total|int > meta.get('top_n','0')|int %}, plus
   <strong>{{ total|int - meta.get('top_n','0')|int }}</strong> more chosen by
   how often they appear across the whole New Testament (<em>Lexical Aids to
-  the Syriac New Testament</em>){% endif %} — and it grows with every update.</p>
+  the Syriac New Testament</em>){% endif %} — and it grows with every update.
+  {%- endif -%}</p>
   <details class="kbd-details" open>
     <summary>⌨ On-screen {{ 'Syriac' if cfg.slug == 'syriac' else 'Arabic' }} keyboard <span class="muted">(click to hide)</span></summary>
     <div id="kmw-status" class="kbd-status"></div>

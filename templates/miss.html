@@ -2,13 +2,14 @@
 {% block title %}Not in the dictionary yet{% endblock %}
 {% block content %}
 {% if wrong_script %}
-<h1 class="page-h">No {{ wrong_script }} in your search</h1>
-<p>This is the {{ meta.get('dict_label','') }} dictionary — it searches
-<strong>{{ wrong_script }}</strong> script. Your query didn't contain any
-{{ wrong_script }} characters (it may be in another script, or romanised).
-Type or paste a {{ wrong_script }} word, use the on-screen keyboard on the
-<a href="{{ url_for('.index') }}">home page</a>, or switch dictionary with
-the toggle above.</p>
+<h1 class="page-h">Nothing matched “{{ searched.raw.strip()[:40] }}”</h1>
+<p>No {{ wrong_script }} word, spelling, or English meaning in this
+dictionary matched what you typed. If it was an English word, check
+<strong>“Elsewhere on the web”</strong> below — we've asked Wiktionary how
+to say it in {{ wrong_script }}. Otherwise: type or paste a
+{{ wrong_script }} word, spell one out in English letters, use the
+on-screen keyboard on the <a href="{{ url_for('.index') }}">home page</a>,
+or switch dictionary with the toggle above.</p>
 {% else %}
 <h1 class="page-h">Not in the dictionary yet: <span class="{{ cfg.font_class }}">{{ searched.typed }}</span></h1>
 <p>This dictionary grows in order of how often words appear in

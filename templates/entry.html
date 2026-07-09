@@ -94,9 +94,10 @@
   <section class="entry-family">
     <h2 class="lab">Root family — <span class="{{ cfg.font_class }}">{{ e.root }}</span></h2>
     <p class="muted rootcard-lede">How this word hangs off its root: the
-    gold-ringed bubble is the word you're reading; outlined bubbles are
-    dictionary forms, filled ones the shapes they take in the text. Drag
-    them around, click one for details.</p>
+    gold-ringed bubble is the word you're reading; its family is unfolded,
+    the others wait folded — <strong>click any outlined circle to unfold
+    it</strong>. Each family keeps its own colour; a dashed “+N” holds the
+    less frequent shapes. Drag anything around.</p>
     <p class="graph-actions">
       <a class="pill" href="{{ url_for('.root_card', root_id=e.root_id) }}"
          target="_blank" rel="noopener">Open in its own tab ↗</a>
@@ -105,7 +106,9 @@
     <div class="root-graph-wrap">
       <div id="root-graph" class="root-graph root-graph-sm"
            data-font-class="{{ cfg.font_class }}"
-           data-highlight="{{ e.word_id }}"></div>
+           data-highlight="{{ e.word_id }}"
+           data-max-forms="6" data-max-solo="14"
+           data-list-href="{{ url_for('.root_card', root_id=e.root_id) }}#family-list"></div>
       <aside id="root-info" class="root-info" hidden></aside>
     </div>
     <script id="graph-data" type="application/json">{{ root_graph|tojson }}</script>

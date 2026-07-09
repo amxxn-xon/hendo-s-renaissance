@@ -12,9 +12,11 @@ pronunciation. If a word isn't here yet, it says so honestly, and your
 search helps decide what gets added next.</p>
 
 <p class="muted">Version {{ version }} · this copy was built on
-{{ meta.get('built_at','—') }} and covers the
-{{ meta.get('top_n','—') }} most frequent words of
-{{ meta.get('corpus','the corpus') }}.</p>
+{{ meta.get('built_at','—') }} and covers
+{%- if meta.get('top_n','0')|int > total|int %} every word of
+{{ meta.get('corpus','the corpus') }} — {{ total }} distinct word forms
+{%- else %} the {{ meta.get('top_n','—') }} most frequent words of
+{{ meta.get('corpus','the corpus') }}{% endif %}.</p>
 
 <h2 class="lab">Ways to use it</h2>
 <ul class="about-ways">
@@ -27,10 +29,11 @@ search helps decide what gets added next.</p>
   the word appears in {{ meta.get('corpus_label','the text') }}, not just the
   first.</li>
   <li><strong>Elsewhere on the web</strong> — at the bottom of an entry we
-  pull live results from Wiktionary{% if cfg.slug == 'arabic' %} and
-  Wikidata{% endif %} for a second opinion. Those are clearly marked as
-  outside sources: helpful, but not checked by us and not part of this
-  dictionary.</li>
+  pull live results from Wiktionary, the
+  {{ 'Aramaic' if cfg.slug == 'syriac' else 'Arabic' }} Wikipedia{% if
+  cfg.slug == 'arabic' %} and Wikidata{% endif %} for a second opinion.
+  Those are clearly marked as outside sources: helpful, but not checked by
+  us and not part of this dictionary.</li>
 </ul>
 
 <h2 class="lab">What the badges mean</h2>

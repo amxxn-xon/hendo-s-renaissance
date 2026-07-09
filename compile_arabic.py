@@ -38,7 +38,8 @@ DB_DEFAULT = ROOT / "data" / "dictionary_ar.db"
 
 
 def cmd_build(args: argparse.Namespace) -> None:
-    from arabiyya.backbone import assemble_entries
+    from arabiyya.backbone import (CONFIDENCE_BASE, PROVENANCE_BASE,
+                                   assemble_entries)
     from arabiyya.glosses import fold
     from suriyani.backbone import ENTRY_FIELDS
 
@@ -80,9 +81,16 @@ def cmd_build(args: argparse.Namespace) -> None:
         "sources_label": "the Quranic Arabic Corpus (with camel_morph glosses)",
         "freq_label": "Qur'an",
         "stats": json.dumps(stats),
+        # Constant per-field provenance/confidence, stored once; each row
+        # holds only its overrides (see arabiyya/backbone.py).
+        "provenance_base": json.dumps(PROVENANCE_BASE, ensure_ascii=False),
+        "confidence_base": json.dumps(CONFIDENCE_BASE),
     }
     con.executemany("INSERT INTO meta VALUES (?,?)", meta.items())
     con.commit()
+    # Reclaim the space DROP TABLE freed: SQLite keeps the file at its
+    # high-water mark otherwise, so a store rebuilt smaller stays huge.
+    con.execute("VACUUM")
     con.close()
 
     print(f"-> {db}")

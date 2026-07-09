@@ -28,8 +28,10 @@ VIRAMA = "\u0d4d"          # MALAYALAM SIGN VIRAMA (chandrakkala)
 CARRIER = "@carrier"       # table directive, see tables/translit_syr_ml.tsv
 
 # core = consonant symbol + optional qushaya/rukkakha/linea marks,
-# then an optional single vowel. Bare vowels / '*' / '-' handled separately.
-_TOKEN_RE = re.compile(r"^([A-Z;/][',_]*)([aoeiu]?)$")
+# then an optional single vowel — and, in one real WORDS.TXT record
+# ("B'Ra_T,;"), a mark written AFTER the vowel; group 3 catches those.
+# Bare vowels / '*' / '-' handled separately.
+_TOKEN_RE = re.compile(r"^([A-Z;/][',_]*)([aoeiu]?)([',_]*)$")
 
 
 class RuleTable:
@@ -83,7 +85,11 @@ class TranslitResult:
 
 def _split(token: str) -> tuple[str, str] | None:
     m = _TOKEN_RE.match(token)
-    return (m.group(1), m.group(2)) if m else None
+    if m is None:
+        return None
+    # Marks written after the vowel join the consonant core, so linea
+    # still raises its flag and the rule lookup still strips them.
+    return (m.group(1) + m.group(3), m.group(2))
 
 
 def transliterate_latin(vocalised: str, table: RuleTable) -> TranslitResult:

@@ -60,6 +60,8 @@ _PROVENANCE = {
     "example": "Peshitta NT (BFBS) via SEDRA III BFBS.TXT; consonantal rendering",
 }
 
+#: Public aliases: the compile scripts write these once into meta
+#: (provenance_base / confidence_base); rows carry only overrides.
 _CONFIDENCE = {
     "headword_bare": "source",
     "sedra3_vocalised": "source",
@@ -76,6 +78,9 @@ _CONFIDENCE = {
     "translit_ipa": "draft_unvetted",
     "example": "source",
 }
+
+PROVENANCE_BASE = _PROVENANCE
+CONFIDENCE_BASE = _CONFIDENCE
 
 
 #: Vendored under data/lexical_aids/ — see PROVENANCE.md there for the
@@ -180,14 +185,27 @@ def assemble_entries(repo_root: Path, top_n: int,
 
         gloss_ml = pivot(meanings, olam) if meanings else []
         example = matthew.example_for(wid, words)
-        attestations = matthew.attestations_for(wid, words)
+        # Cap the rendered concordance at 8 verses per entry: the full
+        # corpus compiles ~20k entries per store, and verse text is the
+        # bulk of the file — 20 verses each pushed the Arabic store past
+        # 90 MB. The true total is still stored ("8 of its 321"). And for
+        # a word attested once, the list would just repeat the example
+        # verse shown above it — store the count, skip the duplicate text.
+        attestations = matthew.attestations_for(wid, words, limit=8)
+        if attestations["total"] <= 1:
+            attestations = {"total": attestations["total"], "shown": []}
 
-        prov = dict(_PROVENANCE)
-        conf = dict(_CONFIDENCE)
+        prov: dict = {}
+        conf: dict = {}
         if not lat.ok:
             prov["translit_lat"] = f"GAP — unmapped tokens {lat.unknown} in {w.ascii_voc!r}"
         if not ml.ok:
             prov["translit_ml"] = f"GAP — unmapped tokens {ml.unknown} in {w.ascii_voc!r}"
+        # Per-entry provenance/confidence hold ONLY the overrides; the
+        # constant baseline (_PROVENANCE/_CONFIDENCE) is written once into
+        # the store's meta by compile.py and merged back at read time —
+        # repeating the same ~1 KB of JSON on ~20k rows was a third of the
+        # whole file.
         la_entry = added_via_lexical_aids.get(wid)
         if la_entry is not None:
             # This entry wouldn't have made Matthew's own top_n cutoff; it's

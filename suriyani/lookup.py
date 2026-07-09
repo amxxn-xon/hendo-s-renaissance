@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import os
 import re
 import sqlite3
 import unicodedata
@@ -202,13 +203,12 @@ def translit_candidates(con: sqlite3.Connection, raw: str,
     mal = unicodedata.normalize("NFC", raw) if _looks_malayalam(raw) else ""
     if not latin and not mal:
         return []
-    fuzzy_ok = any(len(q) >= 4 for q in latin)   # short queries: no fuzzing
 
-    scored: list[tuple[float, int, sqlite3.Row]] = []
-    for r in con.execute("SELECT * FROM entries"):
+    scored: list[tuple[float, int, int]] = []      # (score, -freq, word_id)
+    index = _scan_index(con)
+    for word_id, folds, ml, _words, _first, freq in index:
         score = None
-        if latin and r["translit_lat"]:
-            folds = _translit_folds(r["translit_lat"])
+        if latin and folds:
             if latin & folds:
                 score = 0.0                                   # exact
             elif any(len(q) >= 2 and f.startswith(q)
@@ -221,29 +221,80 @@ def translit_candidates(con: sqlite3.Connection, raw: str,
                 # nunation the user added). Weaker than a stored prefix,
                 # still clearly the same word.
                 score = 1.5
-            elif fuzzy_ok:
-                # "yeshua" vs "yeshuw" — close but not a prefix. Best
-                # similarity across variant pairs, anchored on the first
-                # letter: without that anchor, "baytun" scored 0.83
-                # against "ayatun" (ʾāyatun) — same tail, different word.
-                best = max((difflib.SequenceMatcher(None, q, f).ratio()
-                            for q in latin for f in folds
-                            if q[:1] == f[:1]), default=0.0)
-                if best >= 0.78:
-                    score = 3.0 - best                        # 2.02 … 2.22
-        if score is None and mal and r["translit_ml"]:
-            m = unicodedata.normalize("NFC", r["translit_ml"])
-            if m == mal:
+        if score is None and mal and ml:
+            if ml == mal:
                 score = 0.0
-            elif len(mal) >= 2 and m.startswith(mal):
+            elif len(mal) >= 2 and ml.startswith(mal):
                 score = 1.0
         if score is not None:
-            scored.append((score, -r["freq"], r))
-    scored.sort(key=lambda t: (t[0], t[1]))
-    return [r for _, __, r in scored[:limit]]
+            scored.append((score, -freq, word_id))
+
+    if not scored and any(len(q) >= 4 for q in latin):
+        # Fuzzy pass, only when nothing better exists: "yeshua" vs
+        # "yeshuw". Anchored on the first letter and pre-filtered by
+        # length (without the anchor, "baytun" scored 0.83 against
+        # "ayatun"/ʾāyatun — same tail, different word).
+        for word_id, folds, _ml, _words, _first, freq in index:
+            best = 0.0
+            for q in latin:
+                for f in folds:
+                    if q[:1] != f[:1] or abs(len(q) - len(f)) > 3:
+                        continue
+                    r = difflib.SequenceMatcher(None, q, f).ratio()
+                    if r > best:
+                        best = r
+            if best >= 0.78:
+                scored.append((3.0 - best, -freq, word_id))   # 2.02 … 2.22
+
+    scored.sort()
+    return _rows_by_ids(con, [wid for _, __, wid in scored[:limit]])
 
 
 _GLOSS_WORD_RE = re.compile(r"[a-z]+")
+
+#: Per-store scan index for the Latin/Malayalam/meaning tiers. The full
+#: corpora put ~20k rows in each store, and folding every transliteration
+#: on every keystroke cost ~300–500 ms; folding once per process and
+#: re-scanning frozensets costs a few ms. Keyed by database file path,
+#: invalidated by mtime, so a rebuilt store is picked up automatically.
+_SCAN_CACHE: dict[str, tuple[float, list]] = {}
+
+
+def _scan_index(con: sqlite3.Connection) -> list:
+    """[(word_id, translit_folds, translit_ml_nfc, gloss_words,
+    first_sense_words, freq)] — precomputed comparison forms only; the
+    displayed data is always re-SELECTed from the store by word_id."""
+    row = con.execute("PRAGMA database_list").fetchone()
+    path = row[2] or ":memory:"
+    try:
+        mtime = os.path.getmtime(path)
+    except OSError:
+        mtime = -1.0
+    hit = _SCAN_CACHE.get(path)
+    if hit and hit[0] == mtime:
+        return hit[1]
+    index = []
+    for r in con.execute("SELECT word_id, translit_lat, translit_ml, "
+                         "gloss_en, freq FROM entries"):
+        folds = frozenset(_translit_folds(r[1])) if r[1] else frozenset()
+        ml = unicodedata.normalize("NFC", r[2]) if r[2] else ""
+        gl = (r[3] or "").casefold()
+        words = frozenset(_GLOSS_WORD_RE.findall(gl)) if gl else frozenset()
+        first = (frozenset(_GLOSS_WORD_RE.findall(gl.split(";")[0]))
+                 if gl else frozenset())
+        index.append((r[0], folds, ml, words, first, r[4]))
+    _SCAN_CACHE[path] = (mtime, index)
+    return index
+
+
+def _rows_by_ids(con: sqlite3.Connection,
+                 ordered_ids: list[int]) -> list[sqlite3.Row]:
+    if not ordered_ids:
+        return []
+    marks = ",".join("?" for _ in ordered_ids)
+    by_id = {r["word_id"]: r for r in con.execute(
+        f"SELECT * FROM entries WHERE word_id IN ({marks})", ordered_ids)}
+    return [by_id[i] for i in ordered_ids if i in by_id]
 
 
 def gloss_candidates(con: sqlite3.Connection, raw: str,
@@ -266,16 +317,12 @@ def gloss_candidates(con: sqlite3.Connection, raw: str,
     if q.endswith("s") and len(q) > 3:
         probes.add(q[:-1])
 
-    scored: list[tuple[int, int, sqlite3.Row]] = []
-    for r in con.execute(
-            "SELECT * FROM entries WHERE gloss_en IS NOT NULL AND gloss_en != ''"):
-        gl = r["gloss_en"].casefold()
-        words = set(_GLOSS_WORD_RE.findall(gl))
+    scored: list[tuple[int, int, int]] = []
+    for word_id, _folds, _ml, words, first_sense, freq in _scan_index(con):
         if probes & words:
-            first_sense = set(_GLOSS_WORD_RE.findall(gl.split(";")[0]))
-            scored.append((0 if probes & first_sense else 1, -r["freq"], r))
-    scored.sort(key=lambda t: (t[0], t[1]))
-    return [r for _, __, r in scored[:limit]]
+            scored.append((0 if probes & first_sense else 1, -freq, word_id))
+    scored.sort()
+    return _rows_by_ids(con, [wid for _, __, wid in scored[:limit]])
 
 
 def resolve(con: sqlite3.Connection, q: str, log_misses: bool = True) -> Resolution:
